@@ -184,6 +184,8 @@ void ODRHash::AddTemplateArgument(TemplateArgument TA) {
         AddTemplateArgument(SubTA);
       }
       break;
+    case TemplateArgument::Universal:
+      ID.AddString("UniversalTemplateParameter");    // No structure but indicate the presence. Should maybe add the Name depending on what this hashing is used for. ODR could mean the same name is mandatory?
   }
 }
 

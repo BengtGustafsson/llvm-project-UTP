@@ -232,6 +232,9 @@ TemplateArgumentDependence TemplateArgument::getDependence() const {
     for (const auto &P : pack_elements())
       Deps |= P.getDependence();
     return Deps;
+
+  case Universal:
+      return TemplateArgumentDependence::Dependent;
   }
   llvm_unreachable("unhandled ArgKind");
 }
@@ -262,8 +265,10 @@ bool TemplateArgument::isPackExpansion() const {
 
   case Expression:
     return isa<PackExpansionExpr>(getAsExpr());
-  }
 
+  case Universal:
+      return reinterpret_cast<UniversalTemplateParmDecl*>(TypeOrValue.V)->isParameterPack();
+  }
   llvm_unreachable("Invalid TemplateArgument Kind!");
 }
 
@@ -597,6 +602,17 @@ clang::TemplateArgumentLocInfo::TemplateArgumentLocInfo(
   Template->EllipsisLoc = EllipsisLoc;
   Pointer = Template;
 }
+
+clang::TemplateArgumentLocInfo::TemplateArgumentLocInfo(ASTContext& Ctx, SourceLocation NameLoc, SourceLocation EllipsisLoc)
+{
+    TemplateTemplateArgLocInfo* Template = new (Ctx) TemplateTemplateArgLocInfo;
+    Template->Qualifier = nullptr;
+    Template->QualifierLocData = nullptr;
+    Template->TemplateNameLoc = NameLoc;
+    Template->EllipsisLoc = EllipsisLoc;
+    Pointer = Template;
+}
+
 
 const ASTTemplateArgumentListInfo *
 ASTTemplateArgumentListInfo::Create(const ASTContext &C,

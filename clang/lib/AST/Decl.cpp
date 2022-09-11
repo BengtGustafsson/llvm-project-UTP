@@ -255,7 +255,8 @@ LinkageInfo LinkageComputer::getLVForTemplateParameterList(
   for (const NamedDecl *P : *Params) {
     // Template type parameters are the most common and never
     // contribute to visibility, pack or not.
-    if (isa<TemplateTypeParmDecl>(P))
+    // Universal template parameters never contribute to visibility.
+    if (isa<TemplateTypeParmDecl>(P) || isa<UniversalTemplateParmDecl>(P))
       continue;
 
     // Non-type template parameters can be restricted by the value type, e.g.

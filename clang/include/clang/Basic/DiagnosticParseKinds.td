@@ -784,6 +784,9 @@ def err_class_on_template_template_param
 def ext_template_template_param_typename : ExtWarn<
   "template template parameter using 'typename' is a C++17 extension">,
   InGroup<CXX17>;
+def warn_cxx20_compat_no_universal_template_pars : Warning<
+  "template auto parameter is incompatible with C++ standards before C++2b">,
+  InGroup<CXXPre2bCompat>, DefaultIgnore;
 def warn_cxx14_compat_template_template_param_typename : Warning<
   "template template parameter using 'typename' is "
   "incompatible with C++ standards before C++17">,

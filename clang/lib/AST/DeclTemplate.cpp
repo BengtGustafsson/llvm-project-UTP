@@ -69,6 +69,9 @@ TemplateParameterList::TemplateParameterList(const ASTContext& C,
       if (!IsPack &&
           TTP->getTemplateParameters()->containsUnexpandedParameterPack())
         ContainsUnexpandedParameterPack = true;
+    }
+    else if (const auto* TTP = dyn_cast<UniversalTemplateParmDecl>(P)) {
+        // TODO: What to do here?
     } else if (const auto *TTP = dyn_cast<TemplateTypeParmDecl>(P)) {
       if (const TypeConstraint *TC = TTP->getTypeConstraint()) {
         if (TC->getImmediatelyDeclaredConstraint()
@@ -144,7 +147,11 @@ unsigned TemplateParameterList::getMinRequiredArguments() const {
     } else if (const auto *NTTP = dyn_cast<NonTypeTemplateParmDecl>(P)) {
       if (NTTP->hasDefaultArgument())
         break;
-    } else if (cast<TemplateTemplateParmDecl>(P)->hasDefaultArgument())
+    }
+    else if (const auto* TPLP = dyn_cast<TemplateTemplateParmDecl>(P)) {
+        if (TPLP->hasDefaultArgument())
+            break;
+    } else if (cast<UniversalTemplateParmDecl>(P)->hasDefaultArgument())
       break;
 
     ++NumRequiredArgs;
@@ -867,6 +874,50 @@ void TemplateTemplateParmDecl::setDefaultArgument(
     DefaultArgument.set(nullptr);
   else
     DefaultArgument.set(new (C) TemplateArgumentLoc(DefArg));
+}
+
+//===----------------------------------------------------------------------===//
+// UniversalTemplateParm Allocation/Deallocation Method Implementations
+//===----------------------------------------------------------------------===//
+
+UniversalTemplateParmDecl*
+UniversalTemplateParmDecl::Create(const ASTContext& C, DeclContext* DC,
+                                  SourceLocation IdLoc,
+                                  unsigned D, unsigned P,
+                                  IdentifierInfo* Id,
+                                  bool ParameterPack,
+                                  Optional<unsigned> NumExpanded) {
+    auto* TUPDecl =
+        new (C, DC) UniversalTemplateParmDecl(DC, IdLoc, Id, D, P, ParameterPack, NumExpanded);
+    return TUPDecl;
+}
+
+UniversalTemplateParmDecl*
+UniversalTemplateParmDecl::CreateDeserialized(const ASTContext& C, unsigned ID) {
+    return new (C, ID) UniversalTemplateParmDecl(nullptr,
+        SourceLocation(), nullptr,
+        0, 0,
+        false,
+        None);
+}
+
+
+SourceLocation UniversalTemplateParmDecl::getDefaultArgumentLoc() const {
+    return hasDefaultArgument()
+        ? getDefaultArgumentInfo()->getTypeLoc().getBeginLoc()
+        : SourceLocation();
+}
+
+SourceRange UniversalTemplateParmDecl::getSourceRange() const {
+    if (hasDefaultArgument() && !defaultArgumentWasInherited())
+        return SourceRange(getBeginLoc(),
+            getDefaultArgumentInfo()->getTypeLoc().getEndLoc());
+    // TypeDecl::getSourceRange returns a range containing name location, which is
+    // wrong for unnamed template parameters. e.g:
+    // it will return <[[typename>]] instead of <[[typename]]>
+    else if (getDeclName().isEmpty())
+        return SourceRange(getBeginLoc());
+    return NamedDecl::getSourceRange();
 }
 
 //===----------------------------------------------------------------------===//

@@ -4485,6 +4485,9 @@ bool TreeTransform<Derived>::TransformTemplateArgument(
     Output = TemplateArgumentLoc(TemplateArgument(E.get()), E.get());
     return false;
   }
+  case TemplateArgument::Universal:
+      Output = TemplateArgumentLoc(Arg, TemplateArgumentLocInfo(SemaRef.Context, Arg.getAsUniversal()->getLocation(), Arg.getAsUniversal()->isParameterPack() ? Arg.getAsUniversal()->getLocation() : SourceLocation()));
+      return false;
   }
 
   // Work around bogus GCC warning

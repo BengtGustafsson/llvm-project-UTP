@@ -883,6 +883,8 @@ private:
     ANK_TentativeDecl,
     /// The identifier is a template name. FIXME: Add an annotation for that.
     ANK_TemplateName,
+    /// The identifier is a universal template parameter.
+    AWK_Universal,
     /// The identifier can't be resolved.
     ANK_Unresolved,
     /// Annotation was successful.

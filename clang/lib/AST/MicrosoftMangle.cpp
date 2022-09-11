@@ -1684,6 +1684,8 @@ void MicrosoftCXXNameMangler::mangleTemplateArg(const TemplateDecl *TD,
     }
     break;
   }
+  case TemplateArgument::Universal:
+      assert(false && "No universal template arguments should go unsubstituted this far");
   }
 }
 

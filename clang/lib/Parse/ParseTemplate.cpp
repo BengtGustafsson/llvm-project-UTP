@@ -639,6 +639,12 @@ Parser::TPResult Parser::isStartOfTemplateTypeParameter() {
 ///         'template' '<' template-parameter-list '>' type-parameter-key
 ///               identifier[opt] '=' id-expression
 ///
+///         'template' 'auto' ...[opt] identifier[opt]
+/// TODO:
+///         'template' 'auto' identifier[opt] '=' initializer-clause        // NTTP
+///         'template' 'auto' identifier[opt] '=' type-id                   // typename
+///         'template' 'auto' identifier[opt] '=' id-expression             // template and template auto.
+///
 ///       type-parameter-key:
 ///         class
 ///         typename
@@ -873,59 +879,88 @@ NamedDecl *Parser::ParseTypeParameter(unsigned Depth, unsigned Position) {
 /// ParseTemplateTemplateParameter - Handle the parsing of template
 /// template parameters.
 ///
-///       type-parameter:    [C++ temp.param]
+///       template-parameter:    [C++ temp.param]
+///         ...
 ///         'template' '<' template-parameter-list '>' type-parameter-key
 ///                  ...[opt] identifier[opt]
 ///         'template' '<' template-parameter-list '>' type-parameter-key
 ///                  identifier[opt] = id-expression
+///
 ///       type-parameter-key:
 ///         'class'
 ///         'typename'       [C++1z]
+///
+/// Also handles universal template parameters as these start with the same token
+///      
+///       template-parameter:    [C++ temp.param]
+///         ...
+///         'template' 'auto' ...[opt] identifier[opt]
+/// TODO:
+///         'template' 'auto' identifier[opt] = initializer-clause
+///         'template' 'auto' identifier[opt] = type-id
+
 NamedDecl *
 Parser::ParseTemplateTemplateParameter(unsigned Depth, unsigned Position) {
   assert(Tok.is(tok::kw_template) && "Expected 'template' keyword");
 
   // Handle the template <...> part.
   SourceLocation TemplateLoc = ConsumeToken();
-  SmallVector<NamedDecl*,8> TemplateParams;
+  bool IsUniversalTemplateParameter = false;
+  SmallVector<NamedDecl*, 8> TemplateParams;
   SourceLocation LAngleLoc, RAngleLoc;
-  {
-    MultiParseScope TemplateParmScope(*this);
-    if (ParseTemplateParameters(TemplateParmScope, Depth + 1, TemplateParams,
-                                LAngleLoc, RAngleLoc)) {
-      return nullptr;
-    }
-  }
 
-  // Provide an ExtWarn if the C++1z feature of using 'typename' here is used.
-  // Generate a meaningful error if the user forgot to put class before the
-  // identifier, comma, or greater. Provide a fixit if the identifier, comma,
-  // or greater appear immediately or after 'struct'. In the latter case,
-  // replace the keyword with 'class'.
-  if (!TryConsumeToken(tok::kw_class)) {
-    bool Replace = Tok.isOneOf(tok::kw_typename, tok::kw_struct);
-    const Token &Next = Tok.is(tok::kw_struct) ? NextToken() : Tok;
-    if (Tok.is(tok::kw_typename)) {
-      Diag(Tok.getLocation(),
-           getLangOpts().CPlusPlus17
-               ? diag::warn_cxx14_compat_template_template_param_typename
-               : diag::ext_template_template_param_typename)
-        << (!getLangOpts().CPlusPlus17
-                ? FixItHint::CreateReplacement(Tok.getLocation(), "class")
-                : FixItHint());
-    } else if (Next.isOneOf(tok::identifier, tok::comma, tok::greater,
-                            tok::greatergreater, tok::ellipsis)) {
-      Diag(Tok.getLocation(), diag::err_class_on_template_template_param)
-          << getLangOpts().CPlusPlus17
-          << (Replace
-                  ? FixItHint::CreateReplacement(Tok.getLocation(), "class")
-                  : FixItHint::CreateInsertion(Tok.getLocation(), "class "));
-    } else
-      Diag(Tok.getLocation(), diag::err_class_on_template_template_param)
-          << getLangOpts().CPlusPlus17;
+  if (Tok.is(tok::kw_auto)) {
+      // Universal template parameter
 
-    if (Replace)
-      ConsumeToken();
+      if (!getLangOpts().CPlusPlus2b) {
+          Diag(Tok.getLocation(), diag::warn_cxx20_compat_no_universal_template_pars);
+      }
+
+      IsUniversalTemplateParameter = true;
+      ConsumeToken();  // Consume the auto
+  } else {
+      // Template template parameter
+
+      {
+          MultiParseScope TemplateParmScope(*this);
+          if (ParseTemplateParameters(TemplateParmScope, Depth + 1, TemplateParams,
+              LAngleLoc, RAngleLoc)) {
+              return nullptr;
+          }
+      }
+
+      // Provide an ExtWarn if the C++1z feature of using 'typename' here is used.
+      // Generate a meaningful error if the user forgot to put class before the
+      // identifier, comma, or greater. Provide a fixit if the identifier, comma,
+      // or greater appear immediately or after 'struct'. In the latter case,
+      // replace the keyword with 'class'.
+      if (!TryConsumeToken(tok::kw_class)) {
+          bool Replace = Tok.isOneOf(tok::kw_typename, tok::kw_struct);
+          const Token& Next = Tok.is(tok::kw_struct) ? NextToken() : Tok;
+          if (Tok.is(tok::kw_typename)) {
+              Diag(Tok.getLocation(),
+                  getLangOpts().CPlusPlus17
+                  ? diag::warn_cxx14_compat_template_template_param_typename
+                  : diag::ext_template_template_param_typename)
+                  << (!getLangOpts().CPlusPlus17
+                      ? FixItHint::CreateReplacement(Tok.getLocation(), "class")
+                      : FixItHint());
+          }
+          else if (Next.isOneOf(tok::identifier, tok::comma, tok::greater,
+              tok::greatergreater, tok::ellipsis)) {
+              Diag(Tok.getLocation(), diag::err_class_on_template_template_param)
+                  << getLangOpts().CPlusPlus17
+                  << (Replace
+                      ? FixItHint::CreateReplacement(Tok.getLocation(), "class")
+                      : FixItHint::CreateInsertion(Tok.getLocation(), "class "));
+          }
+          else
+              Diag(Tok.getLocation(), diag::err_class_on_template_template_param)
+              << getLangOpts().CPlusPlus17;
+
+          if (Replace)
+              ConsumeToken();
+      }
   }
 
   // Parse the ellipsis, if given.
@@ -955,6 +990,11 @@ Parser::ParseTemplateTemplateParameter(unsigned Depth, unsigned Position) {
   bool AlreadyHasEllipsis = EllipsisLoc.isValid();
   if (TryConsumeToken(tok::ellipsis, EllipsisLoc))
     DiagnoseMisplacedEllipsis(EllipsisLoc, NameLoc, AlreadyHasEllipsis, true);
+
+  if (IsUniversalTemplateParameter) {
+      return Actions.ActOnUniversalTemplateParameter(getCurScope(), TemplateLoc, EllipsisLoc,
+                                                     ParamName, NameLoc, Depth, Position);
+  }
 
   TemplateParameterList *ParamList =
     Actions.ActOnTemplateParameterList(Depth, SourceLocation(),
@@ -1571,6 +1611,11 @@ ParsedTemplateArgument Parser::ParseTemplateArgument() {
     return Actions.ActOnTemplateTypeArgument(TypeArg);
   }
 
+  if (Tok.getKind() == tok::annot_universal) {
+      ParsedTemplateArgument UniversalTemplateArgument(ParsedTemplateArgument::Universal, Tok.getAnnotationValue(), Tok.getLocation());
+      ConsumeAnnotationToken();
+      return UniversalTemplateArgument;
+  }
   // Try to parse a template template argument.
   {
     TentativeParsingAction TPA(*this);

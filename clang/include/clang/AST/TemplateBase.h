@@ -56,6 +56,7 @@ class Expr;
 struct PrintingPolicy;
 class TypeSourceInfo;
 class ValueDecl;
+class UniversalTemplateParmDecl;
 
 /// Represents a template argument.
 class TemplateArgument {
@@ -94,6 +95,9 @@ public:
     /// representing a non-canonical template argument (for instance, in a
     /// TemplateSpecializationType).
     Expression,
+
+    /// A universal template argument. A void* is some kind of argument.
+    Universal,
 
     /// The template argument is actually a parameter pack. Arguments are stored
     /// in the Args struct.
@@ -221,6 +225,12 @@ public:
     TypeOrValue.V = reinterpret_cast<uintptr_t>(E);
   }
 
+
+  /// Construct a template argument for a universal template parameter (when creating the canonical arg?).
+  TemplateArgument(UniversalTemplateParmDecl* parm) {
+      TypeOrValue.Kind = Universal;
+      TypeOrValue.V = reinterpret_cast<uintptr_t>(parm);
+  }
   /// Construct a template argument that is a template argument pack.
   ///
   /// We assume that storage for the template arguments provided
@@ -303,6 +313,10 @@ public:
     return TemplateName::getFromVoidPointer(TemplateArg.Name);
   }
 
+  UniversalTemplateParmDecl* getAsUniversal() const {
+      assert(getKind() == Universal && " Unexpected kind");
+      return reinterpret_cast<UniversalTemplateParmDecl*>(TypeOrValue.V);
+  }
   /// Retrieve the number of expansions that a template template argument
   /// expansion will produce, if known.
   Optional<unsigned> getNumTemplateExpansions() const;
@@ -413,23 +427,26 @@ private:
     SourceLocation EllipsisLoc;
   };
 
-  llvm::PointerUnion<TemplateTemplateArgLocInfo *, Expr *, TypeSourceInfo *>
+  llvm::PointerUnion<TemplateTemplateArgLocInfo *, Expr *, TypeSourceInfo *, SourceLocation*>
       Pointer;
 
   TemplateTemplateArgLocInfo *getTemplate() const {
     return Pointer.get<TemplateTemplateArgLocInfo *>();
   }
 
+
 public:
   TemplateArgumentLocInfo() {}
   TemplateArgumentLocInfo(TypeSourceInfo *Declarator) { Pointer = Declarator; }
-
+  
   TemplateArgumentLocInfo(Expr *E) { Pointer = E; }
   // Ctx is used for allocation -- this case is unusually large and also rare,
   // so we store the payload out-of-line.
   TemplateArgumentLocInfo(ASTContext &Ctx, NestedNameSpecifierLoc QualifierLoc,
                           SourceLocation TemplateNameLoc,
                           SourceLocation EllipsisLoc);
+
+  TemplateArgumentLocInfo(ASTContext& Ctx, SourceLocation NameLoc, SourceLocation EllipsisLoc);  // Universal
 
   TypeSourceInfo *getAsTypeSourceInfo() const {
     return Pointer.get<TypeSourceInfo *>();
@@ -443,7 +460,7 @@ public:
                                   Template->QualifierLocData);
   }
 
-  SourceLocation getTemplateNameLoc() const {
+  SourceLocation getTemplateNameLoc() const {  // Also useful for Universal case.
     return getTemplate()->TemplateNameLoc;
   }
 

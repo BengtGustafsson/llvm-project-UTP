@@ -5438,7 +5438,10 @@ void CXXNameMangler::mangleTemplateArg(TemplateArgument A, bool NeedExactType) {
     for (const auto &P : A.pack_elements())
       mangleTemplateArg(P, NeedExactType);
     Out << 'E';
+    break;
   }
+  case TemplateArgument::Universal:
+    assert(false && "No universal template arguments should go unsubstituted this far");
   }
 }
 

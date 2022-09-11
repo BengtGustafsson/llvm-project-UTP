@@ -35,7 +35,9 @@ namespace clang {
       /// A non-type template parameter, stored as an expression.
       NonType,
       /// A template template argument, stored as a template name.
-      Template
+      Template,
+      /// A universal template parameter being forwarded. Stored as a UniversalTemplateParmDecl.
+      Universal
     };
 
     /// Build an empty template argument.
@@ -45,7 +47,7 @@ namespace clang {
 
     /// Create a template type argument or non-type template argument.
     ///
-    /// \param Arg the template type argument or non-type template argument.
+    /// \param Arg the template type argument, non-type template argument, or univeral template parameter.
     /// \param Loc the location of the type.
     ParsedTemplateArgument(KindType Kind, void *Arg, SourceLocation Loc)
       : Kind(Kind), Arg(Arg), Loc(Loc) { }
@@ -88,6 +90,13 @@ namespace clang {
       assert(Kind == Template && "Not a template template argument");
       return ParsedTemplateTy::getFromOpaquePtr(Arg);
     }
+
+    /// Retrieve as imoversal
+    UniversalTemplateParmDecl* getAsUniversal() const {
+        assert(Kind == Universal);
+        return static_cast<UniversalTemplateParmDecl*>(Arg);
+    }
+
 
     /// Retrieve the location of the template argument.
     SourceLocation getLocation() const { return Loc; }

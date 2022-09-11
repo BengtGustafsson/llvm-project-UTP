@@ -2786,6 +2786,35 @@ Decl *TemplateDeclInstantiator::VisitTemplateTypeParmDecl(
   return Inst;
 }
 
+// TODO: Can this really happen, or should we never get here?
+Decl *TemplateDeclInstantiator::VisitUniversalTemplateParmDecl(
+    UniversalTemplateParmDecl *D) {
+    Optional<unsigned> NumExpanded;
+
+    UniversalTemplateParmDecl *Inst = UniversalTemplateParmDecl::Create(
+        SemaRef.Context, Owner, D->getLocation(),
+        D->getDepth() - TemplateArgs.getNumSubstitutedLevels(), D->getIndex(),
+        D->getIdentifier(), D->isParameterPack(),
+        NumExpanded);
+
+    Inst->setAccess(AS_public);
+    Inst->setImplicit(D->isImplicit());
+
+    if (D->hasDefaultArgument() && !D->defaultArgumentWasInherited()) {
+        TypeSourceInfo *InstantiatedDefaultArg =
+                                                SemaRef.SubstType(D->getDefaultArgumentInfo(), TemplateArgs,
+            D->getDefaultArgumentLoc(), D->getDeclName());
+        if (InstantiatedDefaultArg)
+            Inst->setDefaultArgument(InstantiatedDefaultArg);
+    }
+
+    // Introduce this template parameter's instantiation into the instantiation
+    // scope.
+    SemaRef.CurrentInstantiationScope->InstantiatedLocal(D, Inst);
+
+    return Inst;
+}
+
 Decl *TemplateDeclInstantiator::VisitNonTypeTemplateParmDecl(
                                                  NonTypeTemplateParmDecl *D) {
   // Substitute into the type of the non-type template parameter.

@@ -2632,6 +2632,8 @@ public:
     NC_UndeclaredTemplate,
     /// The name was classified as a concept name.
     NC_Concept,
+    /// The name was classified as a universal template parameter name.
+    NC_Universal,
   };
 
   class NameClassification {
@@ -2708,6 +2710,12 @@ public:
       return Result;
     }
 
+    static NameClassification UniversalTemplateParameter(UniversalTemplateParmDecl* U) {
+        NameClassification Result(NC_Universal);
+        Result.NonTypeDecl = U;  // Reuse union member.
+        return Result;
+    }
+
     NameClassificationKind getKind() const { return Kind; }
 
     ExprResult getExpression() const {
@@ -2748,6 +2756,13 @@ public:
         llvm_unreachable("unsupported name classification.");
       }
     }
+
+    UniversalTemplateParmDecl* getUniversalTemplateParmDecl() const {
+        assert(Kind == NC_Universal);
+        return static_cast<UniversalTemplateParmDecl*>(NonTypeDecl);
+    }
+
+
   };
 
   /// Perform name lookup on the given name, classifying it based on
@@ -7989,6 +8004,13 @@ public:
                                        unsigned Position,
                                        SourceLocation EqualLoc,
                                        ParsedTemplateArgument DefaultArg);
+  NamedDecl* ActOnUniversalTemplateParameter(Scope* S,
+                                        SourceLocation TmpLoc,
+	                                    SourceLocation EllipsisLoc,
+	                                    IdentifierInfo* ParamName,
+	                                    SourceLocation ParamNameLoc,
+	                                    unsigned Depth,
+	                                    unsigned Position);
 
   TemplateParameterList *
   ActOnTemplateParameterList(unsigned Depth,

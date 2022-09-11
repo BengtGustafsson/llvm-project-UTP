@@ -1752,13 +1752,14 @@ Parser::TryAnnotateName(CorrectionCandidateCallback *CCC,
     return ANK_Error;
 
   case Sema::NC_Keyword:
+
     // The identifier was typo-corrected to a keyword.
     Tok.setIdentifierInfo(Name);
     Tok.setKind(Name->getTokenID());
     PP.TypoCorrectToken(Tok);
     if (SS.isNotEmpty())
       AnnotateScopeToken(SS, !WasScopeAnnotation);
-    // We've "annotated" this as a keyword.
+    // We've "annotated" this as a keyword or UDP.
     return ANK_Success;
 
   case Sema::NC_Unknown:
@@ -1874,6 +1875,13 @@ Parser::TryAnnotateName(CorrectionCandidateCallback *CCC,
       return ANK_Error;
     return ANK_Success;
   }
+  case Sema::NC_Universal:  // Universal template parameter name. These don't have annotations
+      if (SS.isNotEmpty())
+          AnnotateScopeToken(SS, !WasScopeAnnotation);
+
+      Tok.setKind(tok::annot_universal);
+      Tok.setAnnotationValue(Classification.getUniversalTemplateParmDecl());
+      return AWK_Universal;
   }
 
   // Unable to classify the name, but maybe we can annotate a scope specifier.

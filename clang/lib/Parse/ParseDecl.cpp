@@ -3097,6 +3097,7 @@ Parser::DiagnoseMissingSemiAfterTagDefinition(DeclSpec &DS, AccessSpecifier AS,
       case Sema::NC_VarTemplate:
       case Sema::NC_FunctionTemplate:
       case Sema::NC_Concept:
+      case Sema::NC_Universal:   // Can probably not happen.
         // Might be a redeclaration of a prior entity.
         break;
       }

@@ -205,6 +205,8 @@ bool Decl::isTemplateParameterPack() const {
     return NTTP->isParameterPack();
   if (const auto *TTP = dyn_cast<TemplateTemplateParmDecl>(this))
     return TTP->isParameterPack();
+  if (const auto* UTP = dyn_cast<UniversalTemplateParmDecl>(this))
+      return UTP->isParameterPack();
   return false;
 }
 
@@ -811,6 +813,7 @@ unsigned Decl::getIdentifierNamespaceForKind(Kind DeclKind) {
 
     case ClassTemplate:
     case TemplateTemplateParm:
+    case UniversalTemplateParm:     // TODO: Unclear if this is correct. Don't understand what Tag namespace is.
     case TypeAliasTemplate:
       return IDNS_Ordinary | IDNS_Tag | IDNS_Type;
 

@@ -1787,6 +1787,150 @@ public:
   static bool classofKind(Kind K) { return K == TemplateTemplateParm; }
 };
 
+
+/// Declaration of a universal template parameter.
+///
+/// For example, "U" in
+/// \code
+/// template<typename auto U> class whatever;
+/// \endcode
+class UniversalTemplateParmDecl final : public NamedDecl,
+    protected TemplateParmPosition {
+
+    /// Sema creates these on the stack during auto type deduction.
+    friend class Sema;
+    friend class ASTDeclReader;
+
+    /// Whether this template template parameter is a template
+    /// parameter pack.
+    ///
+    /// \code
+    /// template<template <class T> ...MetaFunctions> struct Apply;
+    /// \endcode
+    bool ParameterPack : 1;
+
+    /// Whether this non-type template parameter is an "expanded"
+    /// parameter pack, meaning that its type is a pack expansion and we
+    /// already know the set of types that expansion expands to.
+    bool ExpandedParameterPack : 1;
+
+    /// The number of type parameters in an expanded parameter pack.
+    unsigned NumExpanded = 0;
+
+    /// The default template argument, if any.
+    using DefArgStorage =
+                         DefaultArgStorage<UniversalTemplateParmDecl, TypeSourceInfo *>;  // TODO: Allow three/four different things here. variant?
+    DefArgStorage DefaultArgument;
+
+    UniversalTemplateParmDecl(DeclContext *DC,
+                         SourceLocation IdLoc, IdentifierInfo *Id,
+                         unsigned D, unsigned P,
+                         bool ParameterPack,
+                         Optional<unsigned> NumExpanded)
+            : NamedDecl(UniversalTemplateParm, DC, IdLoc, Id), TemplateParmPosition(D, P),
+        ParameterPack(ParameterPack),
+        ExpandedParameterPack(NumExpanded),
+        NumExpanded(NumExpanded ? *NumExpanded : 0) {}
+
+public:
+    static UniversalTemplateParmDecl *Create(const ASTContext &C, DeclContext *DC,
+                                        SourceLocation IdLoc,
+                                        unsigned D, unsigned P,
+                                        IdentifierInfo *Id,
+                                        bool ParameterPack,
+                                        Optional<unsigned> NumExpanded = None);
+    static UniversalTemplateParmDecl *CreateDeserialized(const ASTContext &C,
+        unsigned ID);
+
+    using TemplateParmPosition::getDepth;
+    using TemplateParmPosition::setDepth;
+    using TemplateParmPosition::getPosition;
+    using TemplateParmPosition::setPosition;
+    using TemplateParmPosition::getIndex;
+
+    const DefArgStorage &getDefaultArgStorage() const { return DefaultArgument; }
+
+    /// Determine whether this template parameter has a default
+    /// argument.
+    bool hasDefaultArgument() const { return DefaultArgument.isSet(); }
+
+    /// Retrieve the default argument, if any.
+    QualType getDefaultArgument() const {
+        return DefaultArgument.get()->getType();
+    }
+
+    /// Retrieves the default argument's source information, if any.
+    TypeSourceInfo *getDefaultArgumentInfo() const {
+        return DefaultArgument.get();
+    }
+
+    /// Retrieves the location of the default argument declaration.
+    SourceLocation getDefaultArgumentLoc() const;
+
+    /// Determines whether the default argument was inherited
+    /// from a previous declaration of this template.
+    bool defaultArgumentWasInherited() const {
+        return DefaultArgument.isInherited();
+    }
+
+    /// Set the default argument for this template parameter.
+    void setDefaultArgument(TypeSourceInfo *DefArg) {
+        DefaultArgument.set(DefArg);
+    }
+
+    /// Set that this default argument was inherited from another
+    /// parameter.
+    void setInheritedDefaultArgument(const ASTContext &C,
+                                     UniversalTemplateParmDecl *Prev) {
+        DefaultArgument.setInherited(C, Prev);
+    }
+
+    /// Removes the default argument of this template parameter.
+    void removeDefaultArgument() {
+        DefaultArgument.clear();
+    }
+
+    /// Returns whether this is a parameter pack.
+    bool isParameterPack() const { return ParameterPack; }
+
+    /// Whether this parameter is a template type parameter pack that has a known
+    /// list of different type-constraints at different positions.
+    ///
+    /// A parameter pack is an expanded parameter pack when the original
+    /// parameter pack's type-constraint was itself a pack expansion, and that
+    /// expansion has already been expanded. For example, given:
+    ///
+    /// \code
+    /// template<typename ...Types>
+    /// struct X {
+    ///   template<convertible_to<Types> ...Convertibles>
+    ///   struct Y { /* ... */ };
+    /// };
+    /// \endcode
+    ///
+    /// The parameter pack \c Convertibles has (convertible_to<Types> && ...) as
+    /// its type-constraint. When \c Types is supplied with template arguments by
+    /// instantiating \c X, the instantiation of \c Convertibles becomes an
+    /// expanded parameter pack. For example, instantiating
+    /// \c X<int, unsigned int> results in \c Convertibles being an expanded
+    /// parameter pack of size 2 (use getNumExpansionTypes() to get this number).
+    bool isExpandedParameterPack() const { return ExpandedParameterPack; }
+
+    /// Retrieves the number of parameters in an expanded parameter pack.
+    unsigned getNumExpansionParameters() const {
+        assert(ExpandedParameterPack && "Not an expansion parameter pack");
+        return NumExpanded;
+    }
+
+    SourceRange getSourceRange() const override LLVM_READONLY;
+
+    // Implement isa/cast/dyncast/etc.
+    static bool classof(const Decl *D) { return classofKind(D->getKind()); }
+    static bool classofKind(Kind K) { return K == UniversalTemplateParm; }
+};
+
+
+
 /// Represents the builtin template declaration which is used to
 /// implement __make_integer_seq and other builtin templates.  It serves
 /// no real purpose beyond existing as a place to hold template parameters.
@@ -2207,7 +2351,7 @@ public:
     return First->InstantiatedFromMember.getPointer();
   }
   ClassTemplatePartialSpecializationDecl *
-  getInstantiatedFromMemberTemplate() const {
+  getInstnnnniversalantiatedFromMemberTemplate() const {
     return getInstantiatedFromMember();
   }
 

@@ -41,6 +41,7 @@ public:
       DISPATCH(TemplateExpansion);
       DISPATCH(Expression);
       DISPATCH(Pack);
+      DISPATCH(Universal);
     }
     llvm_unreachable("TemplateArgument is not covered in switch!");
   }
@@ -63,6 +64,7 @@ public:
   VISIT_METHOD(TemplateExpansion);
   VISIT_METHOD(Expression);
   VISIT_METHOD(Pack);
+  VISIT_METHOD(Universal);
 
   RetTy VisitTemplateArgument(REF(TemplateArgument), ParamTys...) {
     return RetTy();

@@ -1288,6 +1288,8 @@ Parser::isCXXDeclarationSpecifier(ImplicitTypenameContext AllowImplicitTypename,
         return TPResult::Error;
       case ANK_TentativeDecl:
         return TPResult::False;
+      case AWK_Universal: // The name of a UTP is never a decl-spec
+        return TPResult::False;
       case ANK_TemplateName:
         // In C++17, this could be a type template for class template argument
         // deduction. Try to form a type annotation for it. If we're in a
@@ -1551,6 +1553,9 @@ Parser::isCXXDeclarationSpecifier(ImplicitTypenameContext AllowImplicitTypename,
             return TPResult::Error;
           case ANK_TentativeDecl:
             return TPResult::False;
+          case AWK_Universal: // The name of a UTP is never a decl-spec. So I don't see how we could get here.
+              return TPResult::False;
+
           case ANK_TemplateName:
             // In C++17, this could be a type template for class template
             // argument deduction.

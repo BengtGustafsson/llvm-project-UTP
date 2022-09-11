@@ -5167,12 +5167,15 @@ TemplateArgument ASTContext::getInjectedTemplateArg(NamedDecl *Param) {
       E = new (*this) PackExpansionExpr(DependentTy, E, NTTP->getLocation(),
                                         None);
     Arg = TemplateArgument(E);
-  } else {
-    auto *TTP = cast<TemplateTemplateParmDecl>(Param);
+  } else if (auto* TTP = dyn_cast<TemplateTemplateParmDecl>(Param)) {
     if (TTP->isParameterPack())
       Arg = TemplateArgument(TemplateName(TTP), Optional<unsigned>());
     else
       Arg = TemplateArgument(TemplateName(TTP));
+  } else {
+      // Universal template parameter.
+      // TODO?  We can't know what kind it will be replaced with yet, so try setting from a TemplateName which used its void* ctor.
+      Arg = TemplateArgument(cast<UniversalTemplateParmDecl>(Param));
   }
 
   if (Param->isTemplateParameterPack())
@@ -6702,6 +6705,7 @@ TemplateArgument
 ASTContext::getCanonicalTemplateArgument(const TemplateArgument &Arg) const {
   switch (Arg.getKind()) {
     case TemplateArgument::Null:
+    case TemplateArgument::Universal:
       return Arg;
 
     case TemplateArgument::Expression:

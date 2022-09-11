@@ -313,6 +313,8 @@ public:
   /// \returns false if the visitation was terminated early, true otherwise.
   bool TraverseObjCProtocolLoc(ObjCProtocolLoc ProtocolLoc);
 
+  bool TraverseUniversalTemplateArgument(UniversalTemplateParmDecl* decl) { return true; }
+
   // ---- Methods on Attrs ----
 
   // Visit an attribute.
@@ -875,6 +877,8 @@ bool RecursiveASTVisitor<Derived>::TraverseTemplateArgument(
   case TemplateArgument::Pack:
     return getDerived().TraverseTemplateArguments(Arg.pack_begin(),
                                                   Arg.pack_size());
+  case TemplateArgument::Universal:
+    return getDerived().TraverseUniversalTemplateArgument(Arg.getAsUniversal());
   }
 
   return true;
@@ -916,6 +920,8 @@ bool RecursiveASTVisitor<Derived>::TraverseTemplateArgumentLoc(
   case TemplateArgument::Pack:
     return getDerived().TraverseTemplateArguments(Arg.pack_begin(),
                                                   Arg.pack_size());
+  case TemplateArgument::Universal:
+    return getDerived().TraverseUniversalTemplateArgument(Arg.getAsUniversal());
   }
 
   return true;
@@ -1932,6 +1938,10 @@ DEF_TRAVERSE_DECL(TemplateTypeParmDecl, {
   TRY_TO(TraverseTemplateTypeParamDeclConstraints(D));
   if (D->hasDefaultArgument() && !D->defaultArgumentWasInherited())
     TRY_TO(TraverseTypeLoc(D->getDefaultArgumentInfo()->getTypeLoc()));
+})
+
+DEF_TRAVERSE_DECL(UniversalTemplateParmDecl, {
+    // TODO: Traverse default value if set.
 })
 
 DEF_TRAVERSE_DECL(TypedefDecl, {
