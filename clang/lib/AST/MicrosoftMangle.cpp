@@ -439,9 +439,9 @@ private:
   void mangleCallingConvention(CallingConv CC);
   void mangleCallingConvention(const FunctionType *T);
   void mangleIntegerLiteral(const llvm::APSInt &Number,
-                            const NonTypeTemplateParmDecl *PD = nullptr,
+                            const NamedDecl *ND = nullptr,
                             QualType TemplateArgType = QualType());
-  void mangleExpression(const Expr *E, const NonTypeTemplateParmDecl *PD);
+  void mangleExpression(const Expr *E, const NamedDecl *PD);
   void mangleThrowSpecification(const FunctionProtoType *T);
 
   void mangleTemplateArgs(const TemplateDecl *TD,
@@ -1481,20 +1481,31 @@ void MicrosoftCXXNameMangler::mangleUnscopedTemplateName(GlobalDecl GD) {
   mangleUnqualifiedName(GD);
 }
 
-void MicrosoftCXXNameMangler::mangleIntegerLiteral(
-    const llvm::APSInt &Value, const NonTypeTemplateParmDecl *PD,
-    QualType TemplateArgType) {
+void MicrosoftCXXNameMangler::mangleIntegerLiteral(const llvm::APSInt &Value,
+                                                   const NamedDecl *ND,
+                                                   QualType TemplateArgType) {
   // <integer-literal> ::= $0 <number>
   Out << "$";
 
-  // Since MSVC 2019, add 'M[<type>]' after '$' for auto template parameter when
-  // argument is integer.
-  if (getASTContext().getLangOpts().isCompatibleWithMSVC(
-          LangOptions::MSVC2019) &&
-      PD && PD->getType()->getTypeClass() == Type::Auto &&
-      !TemplateArgType.isNull()) {
-    Out << "M";
-    mangleType(TemplateArgType, SourceRange(), QMM_Drop);
+  if (auto PD = dyn_cast<NonTypeTemplateParmDecl>(ND)) {
+    // Since MSVC 2019, add 'M[<type>]' after '$' for auto template parameter
+    // when argument is integer.
+    if (getASTContext().getLangOpts().isCompatibleWithMSVC(
+            LangOptions::MSVC2019) &&
+        PD && PD->getType()->getTypeClass() == Type::Auto &&
+        !TemplateArgType.isNull()) {
+      Out << "M";
+      mangleType(TemplateArgType, SourceRange(), QMM_Drop);
+    }
+  } 
+  else {
+    auto* UD = dyn_cast<UniversalTemplateParmDecl>(ND);
+    if (getASTContext().getLangOpts().isCompatibleWithMSVC(
+            LangOptions::MSVC2019) &&
+            UD != nullptr && !TemplateArgType.isNull()) {
+      Out << "M";
+      mangleType(TemplateArgType, SourceRange(), QMM_Drop);
+    }
   }
 
   Out << "0";
@@ -1503,7 +1514,7 @@ void MicrosoftCXXNameMangler::mangleIntegerLiteral(
 }
 
 void MicrosoftCXXNameMangler::mangleExpression(
-    const Expr *E, const NonTypeTemplateParmDecl *PD) {
+    const Expr *E, const NamedDecl *PD) {
   // See if this is a constant expression.
   if (Optional<llvm::APSInt> Value =
           E->getIntegerConstantExpr(Context.getASTContext())) {
@@ -1613,7 +1624,7 @@ void MicrosoftCXXNameMangler::mangleTemplateArg(const TemplateDecl *TD,
   case TemplateArgument::Integral: {
     QualType T = TA.getIntegralType();
     mangleIntegerLiteral(TA.getAsIntegral(),
-                         cast<NonTypeTemplateParmDecl>(Parm), T);
+                         Parm, T);
     break;
   }
   case TemplateArgument::NullPtr: {
@@ -1638,17 +1649,17 @@ void MicrosoftCXXNameMangler::mangleTemplateArg(const TemplateDecl *TD,
         // non-nullptr member pointers.
         if (!RD->nullFieldOffsetIsZero()) {
           mangleIntegerLiteral(llvm::APSInt::get(-1),
-                               cast<NonTypeTemplateParmDecl>(Parm), T);
+                               Parm, T);
           return;
         }
       }
     }
     mangleIntegerLiteral(llvm::APSInt::getUnsigned(0),
-                         cast<NonTypeTemplateParmDecl>(Parm), T);
+                         Parm, T);
     break;
   }
   case TemplateArgument::Expression:
-    mangleExpression(TA.getAsExpr(), cast<NonTypeTemplateParmDecl>(Parm));
+    mangleExpression(TA.getAsExpr(), Parm);
     break;
   case TemplateArgument::Pack: {
     ArrayRef<TemplateArgument> TemplateArgs = TA.getPackAsArray();

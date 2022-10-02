@@ -5584,26 +5584,27 @@ Sema::SubstDefaultTemplateArgumentIfAvailable(TemplateDecl *Template,
     return TemplateArgumentLoc(TemplateArgument(ArgE), ArgE);
   }
 
-  TemplateTemplateParmDecl *TempTempParm
-    = cast<TemplateTemplateParmDecl>(Param);
-  if (!hasReachableDefaultArgument(TempTempParm))
-    return TemplateArgumentLoc();
+  if (TemplateTemplateParmDecl *TempTempParm =
+          dyn_cast<TemplateTemplateParmDecl>(Param)) {
+    if (!hasReachableDefaultArgument(TempTempParm))
+      return TemplateArgumentLoc();
 
-  HasDefaultArg = true;
-  NestedNameSpecifierLoc QualifierLoc;
-  TemplateName TName = SubstDefaultTemplateArgument(*this, Template,
-                                                    TemplateLoc,
-                                                    RAngleLoc,
-                                                    TempTempParm,
-                                                    Converted,
-                                                    QualifierLoc);
-  if (TName.isNull())
-    return TemplateArgumentLoc();
+    HasDefaultArg = true;
+    NestedNameSpecifierLoc QualifierLoc;
+    TemplateName TName =
+        SubstDefaultTemplateArgument(*this, Template, TemplateLoc, RAngleLoc,
+                                     TempTempParm, Converted, QualifierLoc);
+    if (TName.isNull())
+      return TemplateArgumentLoc();
 
-  return TemplateArgumentLoc(
-      Context, TemplateArgument(TName),
-      TempTempParm->getDefaultArgument().getTemplateQualifierLoc(),
-      TempTempParm->getDefaultArgument().getTemplateNameLoc());
+    return TemplateArgumentLoc(
+        Context, TemplateArgument(TName),
+        TempTempParm->getDefaultArgument().getTemplateQualifierLoc(),
+        TempTempParm->getDefaultArgument().getTemplateNameLoc());
+  }
+
+  UniversalTemplateParmDecl *UnivTempParm =
+      cast<UniversalTemplateParmDecl>(Param);
 }
 
 /// Convert a template-argument that we parsed as a type into a template, if

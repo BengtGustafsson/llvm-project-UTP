@@ -380,6 +380,9 @@ bool TemplateArgument::structurallyEquals(const TemplateArgument &Other) const {
       if (!Args.Args[I].structurallyEquals(Other.Args.Args[I]))
         return false;
     return true;
+
+    case Universal:
+        return true;        // Todo: Check if this is correct.
   }
 
   llvm_unreachable("Invalid TemplateArgument Kind!");
