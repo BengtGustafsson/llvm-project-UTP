@@ -709,10 +709,16 @@ ASTContext::CanonicalTemplateTemplateParm::Profile(llvm::FoldingSetNodeID &ID,
       continue;
     }
 
-    auto *TTP = cast<TemplateTemplateParmDecl>(*P);
-    ID.AddInteger(2);
-    Profile(ID, C, TTP);
+    if (auto *TTP = dyn_cast<TemplateTemplateParmDecl>(*P)) {
+        Profile(ID, C, TTP);
+    }
+
+    auto *UTP = cast<UniversalTemplateParmDecl>(*P);
+    ID.AddInteger(3);
+    ID.AddBoolean(UTP->isParameterPack());
+    // TODO: what else?
   }
+
   Expr *RequiresClause = Parm->getTemplateParameters()->getRequiresClause();
   ID.AddBoolean(RequiresClause != nullptr);
   if (RequiresClause)
@@ -850,9 +856,11 @@ ASTContext::getCanonicalTemplateTemplateParmDecl(
       }
       CanonParams.push_back(Param);
 
+    } else if (auto *TTP =
+                   dyn_cast<TemplateTemplateParmDecl>(*P)) {
+      CanonParams.push_back(getCanonicalTemplateTemplateParmDecl(TTP));
     } else
-      CanonParams.push_back(getCanonicalTemplateTemplateParmDecl(
-                                           cast<TemplateTemplateParmDecl>(*P)));
+      CanonParams.push_back(*P);
   }
 
   Expr *CanonRequiresClause = nullptr;

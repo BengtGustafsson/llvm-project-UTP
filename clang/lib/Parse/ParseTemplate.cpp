@@ -697,6 +697,9 @@ NamedDecl *Parser::ParseTemplateParameter(unsigned Depth, unsigned Position) {
     llvm_unreachable("template param classification can't be ambiguous");
   }
 
+   if (Tok.is(tok::kw___any))
+    return ParseTemplateTemplateParameter(Depth, Position);
+
   if (Tok.is(tok::kw_template))
     return ParseTemplateTemplateParameter(Depth, Position);
 
@@ -901,23 +904,25 @@ NamedDecl *Parser::ParseTypeParameter(unsigned Depth, unsigned Position) {
 
 NamedDecl *
 Parser::ParseTemplateTemplateParameter(unsigned Depth, unsigned Position) {
-  assert(Tok.is(tok::kw_template) && "Expected 'template' keyword");
+  assert((Tok.is(tok::kw_template) || Tok.is(tok::kw___any)) && "Expected 'template' keyword");
 
   // Handle the template <...> part.
+  bool IsUniversalTemplateParameter = Tok.is(tok::kw___any);
   SourceLocation TemplateLoc = ConsumeToken();
-  bool IsUniversalTemplateParameter = false;
   SmallVector<NamedDecl*, 8> TemplateParams;
   SourceLocation LAngleLoc, RAngleLoc;
 
-  if (Tok.is(tok::kw_auto)) {
+  if (IsUniversalTemplateParameter || Tok.is(tok::kw_auto)) {
       // Universal template parameter
 
       if (!getLangOpts().CPlusPlus2b) {
           Diag(Tok.getLocation(), diag::warn_cxx20_compat_no_universal_template_pars);
       }
 
-      IsUniversalTemplateParameter = true;
-      ConsumeToken();  // Consume the auto
+      if (!IsUniversalTemplateParameter) {
+        IsUniversalTemplateParameter = true;
+        ConsumeToken();  // Consume the auto
+      }
   } else {
       // Template template parameter
 

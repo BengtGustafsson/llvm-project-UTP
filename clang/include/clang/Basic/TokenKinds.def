@@ -418,6 +418,7 @@ KEYWORD(_Float16                    , KEYALL)
 // C2x keywords
 C2X_KEYWORD(typeof                  , KEYGNU)
 C2X_KEYWORD(typeof_unqual           , 0)
+CXX20_KEYWORD(__any                   , KEYCXX20)
 
 // ISO/IEC JTC1 SC22 WG14 N1169 Extension
 KEYWORD(_Accum                      , KEYNOCXX)

@@ -601,7 +601,12 @@ Sema::ActOnPackExpansion(const ParsedTemplateArgument &Arg,
     }
 
     return Arg.getTemplatePackExpansion(EllipsisLoc);
+
+  case ParsedTemplateArgument::Universal:
+    UniversalTemplateParmDecl* decl = Arg.getAsUniversal();  // TODO: unclear what to do.
+    return Arg;
   }
+
   llvm_unreachable("Unhandled template argument kind?");
 }
 

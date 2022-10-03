@@ -169,8 +169,10 @@ unsigned TemplateParameterList::getDepth() const {
     return TTP->getDepth();
   else if (const auto *NTTP = dyn_cast<NonTypeTemplateParmDecl>(FirstParm))
     return NTTP->getDepth();
+  else if (const auto *TTP = dyn_cast<TemplateTemplateParmDecl>(FirstParm))
+    return TTP->getDepth();
   else
-    return cast<TemplateTemplateParmDecl>(FirstParm)->getDepth();
+    return cast<UniversalTemplateParmDecl>(FirstParm)->getDepth();
 }
 
 static bool AdoptTemplateParameterList(TemplateParameterList *Params,
@@ -547,10 +549,17 @@ static void ProfileTemplateParameterList(ASTContext &C,
                                                         /*Canonical=*/true);
       continue;
     }
-    const auto *TTP = cast<TemplateTemplateParmDecl>(D);
-    ID.AddInteger(2);
-    ID.AddBoolean(TTP->isParameterPack());
-    ProfileTemplateParameterList(C, ID, TTP->getTemplateParameters());
+    if (const auto *TTP = dyn_cast<TemplateTemplateParmDecl>(D)) {
+      ID.AddInteger(2);
+      ID.AddBoolean(TTP->isParameterPack());
+      ProfileTemplateParameterList(C, ID, TTP->getTemplateParameters());
+      continue;
+    }
+
+    const auto *UTP = cast<UniversalTemplateParmDecl>(D);
+    ID.AddInteger(3);
+    ID.AddBoolean(UTP->isParameterPack());
+    // What else?
   }
 }
 
