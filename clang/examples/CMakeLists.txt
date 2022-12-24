@@ -5,6 +5,7 @@ endif()
 
 if(CLANG_PLUGIN_SUPPORT)
   add_subdirectory(PrintFunctionNames)
+  add_subdirectory(MemberKindPlugin)
   add_subdirectory(AnnotateFunctions)
   add_subdirectory(Attribute)
   add_subdirectory(CallSuperAttribute)
