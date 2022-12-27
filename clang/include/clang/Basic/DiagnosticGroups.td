@@ -538,7 +538,8 @@ def PrivateExtern : DiagGroup<"private-extern">;
 def SelTypeCast : DiagGroup<"cast-of-sel-type">;
 def FunctionDefInObjCContainer : DiagGroup<"function-def-in-objc-container">;
 def BadFunctionCast : DiagGroup<"bad-function-cast">;
-def CastFunctionType : DiagGroup<"cast-function-type">;
+def CastFunctionTypeStrict : DiagGroup<"cast-function-type-strict">;
+def CastFunctionType : DiagGroup<"cast-function-type", [CastFunctionTypeStrict]>;
 def ObjCPropertyImpl : DiagGroup<"objc-property-implementation">;
 def ObjCPropertyNoAttribute : DiagGroup<"objc-property-no-attribute">;
 def ObjCPropertyAssignOnObjectType : DiagGroup<"objc-property-assign-on-object-type">;
@@ -561,7 +562,8 @@ def UnderalignedExceptionObject : DiagGroup<"underaligned-exception-object">;
 def DeprecatedObjCIsaUsage : DiagGroup<"deprecated-objc-isa-usage">;
 def ExplicitInitializeCall : DiagGroup<"explicit-initialize-call">;
 def OrderedCompareFunctionPointers : DiagGroup<"ordered-compare-function-pointers">;
-def Packed : DiagGroup<"packed">;
+def PackedNonPod : DiagGroup<"packed-non-pod">;
+def Packed : DiagGroup<"packed", [PackedNonPod]>;
 def Padded : DiagGroup<"padded">;
 def UnalignedAccess : DiagGroup<"unaligned-access">;
 
@@ -961,6 +963,7 @@ def PointerToEnumCast : DiagGroup<"pointer-to-enum-cast",
                                   [VoidPointerToEnumCast]>;
 def PointerToIntCast : DiagGroup<"pointer-to-int-cast",
                                  [PointerToEnumCast, VoidPointerToIntCast]>;
+def VoidPointerDeref : DiagGroup<"void-ptr-dereference">;
 
 def FUseLdPath : DiagGroup<"fuse-ld-path">;
 
@@ -1387,3 +1390,9 @@ def BranchProtection : DiagGroup<"branch-protection">;
 // HLSL diagnostic groups
 // Warnings for HLSL Clang extensions
 def HLSLExtension : DiagGroup<"hlsl-extensions">;
+
+// Warnings and notes related to const_var_decl_type attribute checks
+def ReadOnlyPlacementChecks : DiagGroup<"read-only-types">;
+
+// Warnings and fixes to support the "safe buffers" programming model.
+def UnsafeBufferUsage : DiagGroup<"unsafe-buffer-usage">;

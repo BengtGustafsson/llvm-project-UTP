@@ -14,6 +14,8 @@
 #include <__memory/uses_allocator.h>
 #include <__type_traits/enable_if.h>
 #include <__type_traits/is_same.h>
+#include <__type_traits/remove_cv.h>
+#include <__utility/declval.h>
 #include <__utility/pair.h>
 #include <tuple>
 
@@ -31,7 +33,7 @@ inline constexpr bool __is_std_pair = false;
 template <class _Type1, class _Type2>
 inline constexpr bool __is_std_pair<pair<_Type1, _Type2>> = true;
 
-template < class _Type, class _Alloc, class... _Args, __enable_if_t<!__is_std_pair<_Type>, int> = 0>
+template <class _Type, class _Alloc, class... _Args, __enable_if_t<!__is_std_pair<_Type>, int> = 0>
 _LIBCPP_HIDE_FROM_ABI constexpr auto
 __uses_allocator_construction_args(const _Alloc& __alloc, _Args&&... __args) noexcept {
   if constexpr (!uses_allocator_v<_Type, _Alloc> && is_constructible_v<_Type, _Args...>) {

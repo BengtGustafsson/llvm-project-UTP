@@ -24,6 +24,7 @@
 #include "clang/AST/Type.h"
 #include "clang/Basic/CharInfo.h"
 #include "clang/Basic/DarwinSDKInfo.h"
+#include "clang/Basic/HLSLRuntime.h"
 #include "clang/Basic/LangOptions.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/SourceManager.h"
@@ -201,7 +202,7 @@ static unsigned getNumAttributeArgs(const ParsedAttr &AL) {
 /// A helper function to provide Attribute Location for the Attr types
 /// AND the ParsedAttr.
 template <typename AttrInfo>
-static std::enable_if_t<std::is_base_of<Attr, AttrInfo>::value, SourceLocation>
+static std::enable_if_t<std::is_base_of_v<Attr, AttrInfo>, SourceLocation>
 getAttrLoc(const AttrInfo &AL) {
   return AL.getLocation();
 }
@@ -2633,7 +2634,7 @@ static void handleAvailabilityAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
   }
 
   if (II->isStr("fuchsia")) {
-    Optional<unsigned> Min, Sub;
+    std::optional<unsigned> Min, Sub;
     if ((Min = Introduced.Version.getMinor()) ||
         (Sub = Introduced.Version.getSubminor())) {
       S.Diag(AL.getLoc(), diag::warn_availability_fuchsia_unavailable_minor);
@@ -2675,8 +2676,8 @@ static void handleAvailabilityAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
 
         if (IOSToWatchOSMapping) {
           if (auto MappedVersion = IOSToWatchOSMapping->map(
-                  Version, MinimumWatchOSVersion, None)) {
-            return MappedVersion.value();
+                  Version, MinimumWatchOSVersion, std::nullopt)) {
+            return *MappedVersion;
           }
         }
 
@@ -2685,10 +2686,10 @@ static void handleAvailabilityAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
         if (NewMajor >= 2) {
           if (Version.getMinor()) {
             if (Version.getSubminor())
-              return VersionTuple(NewMajor, Version.getMinor().value(),
-                                  Version.getSubminor().value());
+              return VersionTuple(NewMajor, *Version.getMinor(),
+                                  *Version.getSubminor());
             else
-              return VersionTuple(NewMajor, Version.getMinor().value());
+              return VersionTuple(NewMajor, *Version.getMinor());
           }
           return VersionTuple(NewMajor);
         }
@@ -2730,8 +2731,8 @@ static void handleAvailabilityAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
           return Version;
 
         if (IOSToTvOSMapping) {
-          if (auto MappedVersion =
-                  IOSToTvOSMapping->map(Version, VersionTuple(0, 0), None)) {
+          if (auto MappedVersion = IOSToTvOSMapping->map(
+                  Version, VersionTuple(0, 0), std::nullopt)) {
             return *MappedVersion;
           }
         }
@@ -2794,24 +2795,25 @@ static void handleAvailabilityAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
         // attributes that are inferred from 'ios'.
         NewII = &S.Context.Idents.get("maccatalyst");
         auto RemapMacOSVersion =
-            [&](const VersionTuple &V) -> Optional<VersionTuple> {
+            [&](const VersionTuple &V) -> std::optional<VersionTuple> {
           if (V.empty())
-            return None;
+            return std::nullopt;
           // API_TO_BE_DEPRECATED is 100000.
           if (V.getMajor() == 100000)
             return VersionTuple(100000);
           // The minimum iosmac version is 13.1
-          return MacOStoMacCatalystMapping->map(V, VersionTuple(13, 1), None);
+          return MacOStoMacCatalystMapping->map(V, VersionTuple(13, 1),
+                                                std::nullopt);
         };
-        Optional<VersionTuple> NewIntroduced =
-                                   RemapMacOSVersion(Introduced.Version),
-                               NewDeprecated =
-                                   RemapMacOSVersion(Deprecated.Version),
-                               NewObsoleted =
-                                   RemapMacOSVersion(Obsoleted.Version);
+        std::optional<VersionTuple> NewIntroduced =
+                                        RemapMacOSVersion(Introduced.Version),
+                                    NewDeprecated =
+                                        RemapMacOSVersion(Deprecated.Version),
+                                    NewObsoleted =
+                                        RemapMacOSVersion(Obsoleted.Version);
         if (NewIntroduced || NewDeprecated || NewObsoleted) {
           auto VersionOrEmptyVersion =
-              [](const Optional<VersionTuple> &V) -> VersionTuple {
+              [](const std::optional<VersionTuple> &V) -> VersionTuple {
             return V ? *V : VersionTuple();
           };
           AvailabilityAttr *NewAttr = S.mergeAvailabilityAttr(
@@ -3149,7 +3151,7 @@ static void handleWarnUnusedResult(Sema &S, Decl *D, const ParsedAttr &AL) {
       if (LO.CPlusPlus && !LO.CPlusPlus20)
         S.Diag(AL.getLoc(), diag::ext_cxx20_attr) << AL;
 
-      // Since this this is spelled [[nodiscard]], get the optional string
+      // Since this is spelled [[nodiscard]], get the optional string
       // literal. If in C++ mode, but not in C++2a mode, diagnose as an
       // extension.
       // FIXME: C2x should support this feature as well, even as an extension.
@@ -3889,27 +3891,38 @@ static void handleFormatAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
   if (!checkUInt32Argument(S, AL, FirstArgExpr, FirstArg, 3))
     return;
 
-  // check if the function is variadic if the 3rd argument non-zero
+  // FirstArg == 0 is is always valid.
   if (FirstArg != 0) {
-    if (isFunctionOrMethodVariadic(D))
-      ++NumArgs; // +1 for ...
-    else
-      S.Diag(D->getLocation(), diag::warn_gcc_requires_variadic_function) << AL;
-  }
-
-  // strftime requires FirstArg to be 0 because it doesn't read from any
-  // variable the input is just the current time + the format string.
-  if (Kind == StrftimeFormat) {
-    if (FirstArg != 0) {
+    if (Kind == StrftimeFormat) {
+      // If the kind is strftime, FirstArg must be 0 because strftime does not
+      // use any variadic arguments.
       S.Diag(AL.getLoc(), diag::err_format_strftime_third_parameter)
-        << FirstArgExpr->getSourceRange();
+          << FirstArgExpr->getSourceRange()
+          << FixItHint::CreateReplacement(FirstArgExpr->getSourceRange(), "0");
       return;
+    } else if (isFunctionOrMethodVariadic(D)) {
+      // Else, if the function is variadic, then FirstArg must be 0 or the
+      // "position" of the ... parameter. It's unusual to use 0 with variadic
+      // functions, so the fixit proposes the latter.
+      if (FirstArg != NumArgs + 1) {
+        S.Diag(AL.getLoc(), diag::err_attribute_argument_out_of_bounds)
+            << AL << 3 << FirstArgExpr->getSourceRange()
+            << FixItHint::CreateReplacement(FirstArgExpr->getSourceRange(),
+                                            std::to_string(NumArgs + 1));
+        return;
+      }
+    } else {
+      // Inescapable GCC compatibility diagnostic.
+      S.Diag(D->getLocation(), diag::warn_gcc_requires_variadic_function) << AL;
+      if (FirstArg <= Idx) {
+        // Else, the function is not variadic, and FirstArg must be 0 or any
+        // parameter after the format parameter. We don't offer a fixit because
+        // there are too many possible good values.
+        S.Diag(AL.getLoc(), diag::err_attribute_argument_out_of_bounds)
+            << AL << 3 << FirstArgExpr->getSourceRange();
+        return;
+      }
     }
-  // if 0 it disables parameter checking (to use with e.g. va_list)
-  } else if (FirstArg != 0 && FirstArg != NumArgs) {
-    S.Diag(AL.getLoc(), diag::err_attribute_argument_out_of_bounds)
-        << AL << 3 << FirstArgExpr->getSourceRange();
-    return;
   }
 
   FormatAttr *NewAttr = S.mergeFormatAttr(D, AL, II, Idx, FirstArg);
@@ -4340,7 +4353,7 @@ void Sema::AddAlignedAttr(Decl *D, const AttributeCommonInfo &CI, Expr *E,
   }
 
   const auto *VD = dyn_cast<VarDecl>(D);
-  if (VD && Context.getTargetInfo().isTLSSupported()) {
+  if (VD) {
     unsigned MaxTLSAlign =
         Context.toCharUnitsFromBits(Context.getTargetInfo().getMaxTLSAlign())
             .getQuantity();
@@ -4505,7 +4518,7 @@ static void parseModeAttrArg(Sema &S, StringRef Str, unsigned &DestWidth,
     break;
   case 7:
     if (Str == "pointer")
-      DestWidth = S.Context.getTargetInfo().getPointerWidth(0);
+      DestWidth = S.Context.getTargetInfo().getPointerWidth(LangAS::Default);
     break;
   case 11:
     if (Str == "unwind_word")
@@ -6819,12 +6832,12 @@ static void handleUuidAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
 static void handleHLSLNumThreadsAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
   using llvm::Triple;
   Triple Target = S.Context.getTargetInfo().getTriple();
+  auto Env = S.Context.getTargetInfo().getTriple().getEnvironment();
   if (!llvm::is_contained({Triple::Compute, Triple::Mesh, Triple::Amplification,
                            Triple::Library},
-                          Target.getEnvironment())) {
+                          Env)) {
     uint32_t Pipeline =
-        (uint32_t)S.Context.getTargetInfo().getTriple().getEnvironment() -
-        (uint32_t)llvm::Triple::Pixel;
+        static_cast<uint32_t>(hlsl::getStageFromEnvironment(Env));
     S.Diag(AL.getLoc(), diag::err_hlsl_attr_unsupported_in_stage)
         << AL << Pipeline << "Compute, Amplification, Mesh or Library";
     return;
@@ -6891,11 +6904,35 @@ HLSLNumThreadsAttr *Sema::mergeHLSLNumThreadsAttr(Decl *D,
 
 static void handleHLSLSVGroupIndexAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
   using llvm::Triple;
-  Triple Target = S.Context.getTargetInfo().getTriple();
-  if (Target.getEnvironment() != Triple::Compute &&
-      Target.getEnvironment() != Triple::Library) {
+  auto Env = S.Context.getTargetInfo().getTriple().getEnvironment();
+  if (Env != Triple::Compute && Env != Triple::Library) {
     // FIXME: it is OK for a compute shader entry and pixel shader entry live in
     // same HLSL file. Issue https://github.com/llvm/llvm-project/issues/57880.
+    ShaderStage Pipeline = hlsl::getStageFromEnvironment(Env);
+    S.Diag(AL.getLoc(), diag::err_hlsl_attr_unsupported_in_stage)
+        << AL << (uint32_t)Pipeline << "Compute";
+    return;
+  }
+
+  D->addAttr(::new (S.Context) HLSLSV_GroupIndexAttr(S.Context, AL));
+}
+
+static bool isLegalTypeForHLSLSV_DispatchThreadID(QualType T) {
+  if (!T->hasUnsignedIntegerRepresentation())
+    return false;
+  if (const auto *VT = T->getAs<VectorType>())
+    return VT->getNumElements() <= 3;
+  return true;
+}
+
+static void handleHLSLSV_DispatchThreadIDAttr(Sema &S, Decl *D,
+                                              const ParsedAttr &AL) {
+  using llvm::Triple;
+  Triple Target = S.Context.getTargetInfo().getTriple();
+  // FIXME: it is OK for a compute shader entry and pixel shader entry live in
+  // same HLSL file.Issue https://github.com/llvm/llvm-project/issues/57880.
+  if (Target.getEnvironment() != Triple::Compute &&
+      Target.getEnvironment() != Triple::Library) {
     uint32_t Pipeline =
         (uint32_t)S.Context.getTargetInfo().getTriple().getEnvironment() -
         (uint32_t)llvm::Triple::Pixel;
@@ -6904,7 +6941,25 @@ static void handleHLSLSVGroupIndexAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
     return;
   }
 
-  D->addAttr(::new (S.Context) HLSLSV_GroupIndexAttr(S.Context, AL));
+  // FIXME: report warning and ignore semantic when cannot apply on the Decl.
+  // See https://github.com/llvm/llvm-project/issues/57916.
+
+  // FIXME: support semantic on field.
+  // See https://github.com/llvm/llvm-project/issues/57889.
+  if (isa<FieldDecl>(D)) {
+    S.Diag(AL.getLoc(), diag::err_hlsl_attr_invalid_ast_node)
+        << AL << "parameter";
+    return;
+  }
+
+  auto *VD = cast<ValueDecl>(D);
+  if (!isLegalTypeForHLSLSV_DispatchThreadID(VD->getType())) {
+    S.Diag(AL.getLoc(), diag::err_hlsl_attr_invalid_type)
+        << AL << "uint/uint2/uint3";
+    return;
+  }
+
+  D->addAttr(::new (S.Context) HLSLSV_DispatchThreadIDAttr(S.Context, AL));
 }
 
 static void handleHLSLShaderAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
@@ -8543,6 +8598,9 @@ ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D, const ParsedAttr &AL,
   case ParsedAttr::AT_X86ForceAlignArgPointer:
     handleX86ForceAlignArgPointerAttr(S, D, AL);
     break;
+  case ParsedAttr::AT_ReadOnlyPlacement:
+    handleSimpleAttribute<ReadOnlyPlacementAttr>(S, D, AL);
+    break;
   case ParsedAttr::AT_DLLExport:
   case ParsedAttr::AT_DLLImport:
     handleDLLAttr(S, D, AL);
@@ -8991,6 +9049,9 @@ ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D, const ParsedAttr &AL,
     break;
   case ParsedAttr::AT_HLSLSV_GroupIndex:
     handleHLSLSVGroupIndexAttr(S, D, AL);
+    break;
+  case ParsedAttr::AT_HLSLSV_DispatchThreadID:
+    handleHLSLSV_DispatchThreadIDAttr(S, D, AL);
     break;
   case ParsedAttr::AT_HLSLShader:
     handleHLSLShaderAttr(S, D, AL);

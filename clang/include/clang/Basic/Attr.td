@@ -133,6 +133,12 @@ def SharedVar : SubsetSubject<Var,
 def GlobalVar : SubsetSubject<Var,
                              [{S->hasGlobalStorage()}], "global variables">;
 
+def ExternalGlobalVar : SubsetSubject<Var,
+                             [{S->hasGlobalStorage() &&
+                               S->getStorageClass()!=StorageClass::SC_Static &&
+                               !S->isLocalExternDecl()}],
+                             "external global variables">;
+
 def InlineFunction : SubsetSubject<Function,
                              [{S->isInlineSpecified()}], "inline functions">;
 
@@ -3743,8 +3749,8 @@ def OMPDeclareTargetDecl : InheritableAttr {
   let Documentation = [OMPDeclareTargetDocs];
   let Args = [
     EnumArgument<"MapType", "MapTypeTy",
-                 [ "to", "link" ],
-                 [ "MT_To", "MT_Link" ]>,
+                 [ "to", "enter", "link" ],
+                 [ "MT_To", "MT_Enter", "MT_Link" ]>,
     EnumArgument<"DevType", "DevTypeTy",
                  [ "host", "nohost", "any" ],
                  [ "DT_Host", "DT_NoHost", "DT_Any" ]>,
@@ -3992,10 +3998,17 @@ def HLSLSV_GroupIndex: HLSLAnnotationAttr {
 
 def HLSLResourceBinding: InheritableAttr {
   let Spellings = [HLSLSemantic<"register">];
-  let Subjects = SubjectList<[HLSLBufferObj, GlobalVar]>;
+  let Subjects = SubjectList<[HLSLBufferObj, ExternalGlobalVar]>;
   let LangOpts = [HLSL];
   let Args = [StringArgument<"Slot">, StringArgument<"Space", 1>];
   let Documentation = [HLSLResourceBindingDocs];
+}
+
+def HLSLSV_DispatchThreadID: HLSLAnnotationAttr {
+  let Spellings = [HLSLSemantic<"SV_DispatchThreadID">];
+  let Subjects = SubjectList<[ParmVar, Field]>;
+  let LangOpts = [HLSL];
+  let Documentation = [HLSLSV_DispatchThreadIDDocs];
 }
 
 def HLSLShader : InheritableAttr {
@@ -4031,8 +4044,31 @@ def HLSLResource : InheritableAttr {
   let Args = [EnumArgument<"ResourceType", "ResourceClass",
                            ["SRV", "UAV", "CBuffer", "Sampler"],
                            ["SRV", "UAV", "CBuffer", "Sampler"]
-                           >];
+                           >,
+              EnumArgument<"ResourceShape", "ResourceKind",
+                           ["Texture1D", "Texture2D", "Texture2DMS",
+                            "Texture3D", "TextureCube", "Texture1DArray",
+                            "Texture2DArray", "Texture2DMSArray",
+                            "TextureCubeArray", "TypedBuffer", "RawBuffer",
+                            "StructuredBuffer", "CBufferKind", "SamplerKind",
+                            "TBuffer", "RTAccelerationStructure", "FeedbackTexture2D",
+                            "FeedbackTexture2DArray"],
+                           ["Texture1D", "Texture2D", "Texture2DMS",
+                            "Texture3D", "TextureCube", "Texture1DArray",
+                            "Texture2DArray", "Texture2DMSArray",
+                            "TextureCubeArray", "TypedBuffer", "RawBuffer",
+                            "StructuredBuffer", "CBufferKind", "SamplerKind",
+                            "TBuffer", "RTAccelerationStructure", "FeedbackTexture2D",
+                            "FeedbackTexture2DArray"]
+                            >
+              ];
   let Documentation = [InternalOnly];
+}
+
+def HLSLGroupSharedAddressSpace : TypeAttr {
+  let Spellings = [Keyword<"groupshared">];
+  let Subjects = SubjectList<[Var]>;
+  let Documentation = [HLSLGroupSharedAddressSpaceDocs];
 }
 
 def RandomizeLayout : InheritableAttr {
@@ -4059,4 +4095,9 @@ def FunctionReturnThunks : InheritableAttr,
   >];
   let Subjects = SubjectList<[Function]>;
   let Documentation = [FunctionReturnThunksDocs];
+}
+def ReadOnlyPlacement : InheritableAttr {
+  let Spellings = [Clang<"enforce_read_only_placement">];
+  let Subjects = SubjectList<[Record]>;
+  let Documentation = [ReadOnlyPlacementDocs];
 }
