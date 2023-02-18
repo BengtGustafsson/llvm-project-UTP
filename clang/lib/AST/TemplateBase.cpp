@@ -401,6 +401,12 @@ TemplateArgument TemplateArgument::getPackExpansionPattern() const {
   case TemplateExpansion:
     return TemplateArgument(getAsTemplateOrTemplatePattern());
 
+  case Universal: {
+    UniversalTemplateParmDecl* decl = getAsUniversal();
+    return TemplateArgument(decl);  // TODO: This is wrong. It is however unclear what the "pack expansion pattern" for a UTP Pack should be.
+  }
+    
+
   case Declaration:
   case Integral:
   case Pack:

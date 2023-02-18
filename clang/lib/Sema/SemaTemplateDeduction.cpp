@@ -6085,6 +6085,15 @@ MarkUsedTemplateParameters(ASTContext &Ctx, QualType T,
   }
 }
 
+static void
+   MarkUsedTemplateParameters(ASTContext &Ctx, UniversalTemplateParmDecl* U,
+                              bool OnlyDeduced,
+                              unsigned Depth,
+                              llvm::SmallBitVector &Used) {
+    if (U->getDepth() == Depth)
+        Used[U->getIndex()] = true;
+}
+
 /// Mark the template parameters that are used by this
 /// template argument.
 static void
@@ -6124,6 +6133,11 @@ MarkUsedTemplateParameters(ASTContext &Ctx,
   case TemplateArgument::Pack:
     for (const auto &P : TemplateArg.pack_elements())
       MarkUsedTemplateParameters(Ctx, P, OnlyDeduced, Depth, Used);
+    break;
+
+  case TemplateArgument::Universal:
+    MarkUsedTemplateParameters(Ctx, TemplateArg.getAsUniversal(), OnlyDeduced, Depth,
+                               Used);
     break;
   }
 }

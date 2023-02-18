@@ -8032,7 +8032,7 @@ static bool MatchTemplateParameterKind(
     const NamedDecl *OldInstFrom, bool Complain,
     Sema::TemplateParameterListEqualKind Kind, SourceLocation TemplateArgLoc) {
   // Check the actual kind (type, non-type, template).
-  if (Old->getKind() != New->getKind()) {
+  if (Old->getKind() != Decl::UniversalTemplateParm && Old->getKind() != New->getKind()) {
     if (Complain) {
       unsigned NextDiag = diag::err_template_param_different_kind;
       if (TemplateArgLoc.isValid()) {
