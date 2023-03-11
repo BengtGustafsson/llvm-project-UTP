@@ -215,7 +215,7 @@ static bool sinkInstruction(
   BasicBlock *MoveBB = *SortedBBsToSinkInto.begin();
   // FIXME: Optimize the efficiency for cloned value replacement. The current
   //        implementation is O(SortedBBsToSinkInto.size() * I.num_uses()).
-  for (BasicBlock *N : makeArrayRef(SortedBBsToSinkInto).drop_front(1)) {
+  for (BasicBlock *N : ArrayRef(SortedBBsToSinkInto).drop_front(1)) {
     assert(LoopBlockNumber.find(N)->second >
                LoopBlockNumber.find(MoveBB)->second &&
            "BBs not sorted!");
@@ -312,16 +312,22 @@ static bool sinkLoopInvariantInstructions(Loop &L, AAResults &AA, LoopInfo &LI,
     if (!canSinkOrHoistInst(I, &AA, &DT, &L, MSSAU, false, LICMFlags))
       continue;
     if (sinkInstruction(L, I, ColdLoopBBs, LoopBlockNumber, LI, DT, BFI,
-                        &MSSAU))
+                        &MSSAU)) {
       Changed = true;
+      if (SE)
+        SE->forgetBlockAndLoopDispositions(&I);
+    }
   }
 
-  if (Changed && SE)
-    SE->forgetLoopDispositions();
   return Changed;
 }
 
 PreservedAnalyses LoopSinkPass::run(Function &F, FunctionAnalysisManager &FAM) {
+  // Enable LoopSink only when runtime profile is available.
+  // With static profile, the sinking decision may be sub-optimal.
+  if (!F.hasProfileData())
+    return PreservedAnalyses::all();
+
   LoopInfo &LI = FAM.getResult<LoopAnalysis>(F);
   // Nothing to do if there are no loops.
   if (LI.empty())
@@ -345,11 +351,6 @@ PreservedAnalyses LoopSinkPass::run(Function &F, FunctionAnalysisManager &FAM) {
 
     BasicBlock *Preheader = L.getLoopPreheader();
     if (!Preheader)
-      continue;
-
-    // Enable LoopSink only when runtime profile is available.
-    // With static profile, the sinking decision may be sub-optimal.
-    if (!Preheader->getParent()->hasProfileData())
       continue;
 
     // Note that we don't pass SCEV here because it is only used to invalidate

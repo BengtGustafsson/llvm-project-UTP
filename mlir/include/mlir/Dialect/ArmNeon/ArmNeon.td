@@ -25,6 +25,7 @@ def ArmNeon_Dialect : Dialect {
   let name = "arm_neon";
   let cppNamespace = "::mlir::arm_neon";
 
+
   // Note: this does not need to depend on LLVMDialect as long as functions in
   // this dialect (such as canonicalization) do not produce entities belonging
   // to the LLVMDialect (ops or types).
@@ -39,7 +40,7 @@ def ArmNeon_Dialect : Dialect {
 class ArmNeon_IntrOp<string mnemonic, list<int> overloadedResults,
                      list<int> overloadedOperands, int numResults,
                      list<Trait> traits = [], bit requiresAccessGroup = 0,
-                     bit requiresAliasScope = 0>
+                     bit requiresAliasAnalysis = 0>
     : LLVM_IntrOpBase</*dialect=*/ArmNeon_Dialect,
                       /*opName=*/"intr." # mnemonic,
                       /*enumName=*/"aarch64_neon_" # !subst(".", "_", mnemonic),
@@ -48,7 +49,7 @@ class ArmNeon_IntrOp<string mnemonic, list<int> overloadedResults,
                       /*traits=*/traits,
                       /*numResults=*/numResults,
                       /*requiresAccessGroup=*/requiresAccessGroup,
-                      /*requiresAliasScope=*/requiresAliasScope>;
+                      /*requiresAliasAnalysis=*/requiresAliasAnalysis>;
 
 // ArmNeon dialect op that corresponds to an LLVM IR intrinsic with one
 // overloaded result.
@@ -64,7 +65,7 @@ class ArmNeon_OverloadedOperandsWithOneResultIntrOp<string mnemonic,
   : ArmNeon_IntrOp<mnemonic, [0], overloadedOperands, 1, traits>;
 
 def SMullOp : ArmNeon_OverloadedOneResultIntrOp<"smull", [
-       NoSideEffect,
+       Pure,
        AllTypesMatch<["a", "b"]>,
        TypesMatchWith<
          "res has same vector shape and element bitwidth scaled by 2 as a",
@@ -93,7 +94,7 @@ def SMullOp : ArmNeon_OverloadedOneResultIntrOp<"smull", [
 }
 
 def SdotOp : ArmNeon_OverloadedOperandsWithOneResultIntrOp<"sdot",[1], [
-      NoSideEffect,
+      Pure,
       AllTypesMatch<["b", "c"]>,
       AllTypesMatch<["a", "res"]>,
       TypesMatchWith<"res has the same number of elements as operand b",
@@ -126,7 +127,7 @@ class ArmNeon_2dOp<string mnemonic, list<Trait> traits = []>
          /*traits=*/traits>;
 
 def Sdot2dOp : ArmNeon_2dOp<"sdot", [
-      NoSideEffect,
+      Pure,
       AllTypesMatch<["b", "c"]>,
       AllTypesMatch<["a", "res"]>,
       PredOpTrait<

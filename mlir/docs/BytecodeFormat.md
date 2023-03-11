@@ -6,7 +6,8 @@ This documents describes the MLIR bytecode format and its encoding.
 
 ## Magic Number
 
-MLIR uses the following four-byte magic number to indicate bytecode files:
+MLIR uses the following four-byte magic number to
+indicate bytecode files:
 
 '\[‘M’<sub>8</sub>, ‘L’<sub>8</sub>, ‘ï’<sub>8</sub>, ‘R’<sub>8</sub>\]'
 
@@ -24,7 +25,7 @@ structural concepts layered on top.
 #### Fixed-Width Integers
 
 ```
-  byte                  ::= `0x00`...`0xFF`
+  byte ::= `0x00`...`0xFF`
 ```
 
 Fixed width integers are unsigned integers of a known byte size. The values are
@@ -157,16 +158,25 @@ dialect_section {
 }
 
 op_name_group {
-  dialect: varint,
+  dialect: varint // (dialectID << 1) | (hasVersion),
+  version : dialect_version_section
   numOpNames: varint,
   opNames: varint[]
 }
+
+dialect_version_section {
+  size: varint,
+  version: byte[]
+}
+
 ```
 
-Dialects are encoded as indexes to the name string within the string section.
-Operation names are encoded in groups by dialect, with each group containing the
-dialect, the number of operation names, and the array of indexes to each name
-within the string section.
+Dialects are encoded as a `varint` containing the index to the name string
+within the string section, plus a flag indicating whether the dialect is
+versioned. Operation names are encoded in groups by dialect, with each group
+containing the dialect, the number of operation names, and the array of indexes
+to each name within the string section. The version is encoded as a nested
+section.
 
 ### Attribute/Type Sections
 
@@ -179,7 +189,7 @@ and types to always be lazily loaded on demand.
 ```
 attr_type_section {
   attrs: attribute[],
-  types: type[]  
+  types: type[]
 }
 attr_type_offset_section {
   numAttrs: varint,
@@ -190,7 +200,7 @@ attr_type_offset_section {
 attr_type_offset_group {
   dialect: varint,
   numElements: varint,
-  offsets: varint[] // (offset << 1) | (hasCustomEncoding) 
+  offsets: varint[] // (offset << 1) | (hasCustomEncoding)
 }
 
 attribute {
@@ -323,7 +333,7 @@ op {
   numSuccessors: varint?,
   successors: varint[],
 
-  regionEncoding: varint?, // (numRegions << 1) | (isIsolatedFromAbove) 
+  regionEncoding: varint?, // (numRegions << 1) | (isIsolatedFromAbove)
   regions: region[]
 }
 ```

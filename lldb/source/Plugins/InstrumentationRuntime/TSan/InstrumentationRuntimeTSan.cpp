@@ -87,6 +87,9 @@ extern "C"
     void *dlsym(void* handle, const char* symbol);
     int (*ptr__tsan_get_report_loc_object_type)(void *report, unsigned long idx, const char **object_type);
 }
+)";
+
+const char *thread_sanitizer_retrieve_report_data_command = R"(
 
 const int REPORT_TRACE_SIZE = 128;
 const int REPORT_ARRAY_SIZE = 4;
@@ -154,11 +157,7 @@ struct data {
         int idx;
         int tid;
     } unique_tids[REPORT_ARRAY_SIZE];
-};
-)";
-
-const char *thread_sanitizer_retrieve_report_data_command = R"(
-data t = {0};
+} t = {0};
 
 ptr__tsan_get_report_loc_object_type = (typeof(ptr__tsan_get_report_loc_object_type))(void *)dlsym((void*)-2 /*RTLD_DEFAULT*/, "__tsan_get_report_loc_object_type");
 
@@ -915,14 +914,15 @@ void InstrumentationRuntimeTSan::Activate() {
   if (symbol_address == LLDB_INVALID_ADDRESS)
     return;
 
-  bool internal = true;
-  bool hardware = false;
+  const bool internal = true;
+  const bool hardware = false;
+  const bool sync = false;
   Breakpoint *breakpoint =
       process_sp->GetTarget()
           .CreateBreakpoint(symbol_address, internal, hardware)
           .get();
   breakpoint->SetCallback(InstrumentationRuntimeTSan::NotifyBreakpointHit, this,
-                          true);
+                          sync);
   breakpoint->SetBreakpointKind("thread-sanitizer-report");
   SetBreakpointID(breakpoint->GetID());
 

@@ -210,13 +210,6 @@ const char *DWARFDIE::GetPubname() const {
     return nullptr;
 }
 
-const char *DWARFDIE::GetQualifiedName(std::string &storage) const {
-  if (IsValid())
-    return m_die->GetQualifiedName(m_cu, storage);
-  else
-    return nullptr;
-}
-
 // GetName
 //
 // Get value of the DW_AT_name attribute and place that value into the supplied
@@ -446,8 +439,9 @@ bool DWARFDIE::IsMethod() const {
 
 bool DWARFDIE::GetDIENamesAndRanges(
     const char *&name, const char *&mangled, DWARFRangeList &ranges,
-    int &decl_file, int &decl_line, int &decl_column, int &call_file,
-    int &call_line, int &call_column,
+    std::optional<int> &decl_file, std::optional<int> &decl_line,
+    std::optional<int> &decl_column, std::optional<int> &call_file,
+    std::optional<int> &call_line, std::optional<int> &call_column,
     lldb_private::DWARFExpressionList *frame_base) const {
   if (IsValid()) {
     return m_die->GetDIENamesAndRanges(

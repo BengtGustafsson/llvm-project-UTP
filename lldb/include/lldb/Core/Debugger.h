@@ -12,6 +12,7 @@
 #include <cstdint>
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "lldb/Core/DebuggerEvents.h"
@@ -27,6 +28,7 @@
 #include "lldb/Target/TargetList.h"
 #include "lldb/Utility/Broadcaster.h"
 #include "lldb/Utility/ConstString.h"
+#include "lldb/Utility/Diagnostics.h"
 #include "lldb/Utility/FileSpec.h"
 #include "lldb/Utility/Status.h"
 #include "lldb/Utility/UserID.h"
@@ -173,7 +175,7 @@ public:
 
   ScriptInterpreter *
   GetScriptInterpreter(bool can_create = true,
-                       llvm::Optional<lldb::ScriptLanguage> language = {});
+                       std::optional<lldb::ScriptLanguage> language = {});
 
   lldb::ListenerSP GetListener() { return m_listener_sp; }
 
@@ -348,6 +350,8 @@ public:
 
   bool SetTabSize(uint32_t tab_size);
 
+  lldb::DWIMPrintVerbosity GetDWIMPrintVerbosity() const;
+
   bool GetEscapeNonPrintables() const;
 
   bool GetNotifyVoid() const;
@@ -383,29 +387,29 @@ public:
 
   /// Report warning events.
   ///
-  /// Progress events will be delivered to any debuggers that have listeners
-  /// for the eBroadcastBitError.
+  /// Warning events will be delivered to any debuggers that have listeners
+  /// for the eBroadcastBitWarning.
   ///
   /// \param[in] message
   ///   The warning message to be reported.
   ///
   /// \param [in] debugger_id
   ///   If this optional parameter has a value, it indicates the unique
-  ///   debugger identifier that this progress should be delivered to. If this
-  ///   optional parameter does not have a value, the progress will be
-  ///   delivered to all debuggers.
+  ///   debugger identifier that this diagnostic should be delivered to. If
+  ///   this optional parameter does not have a value, the diagnostic event
+  ///   will be delivered to all debuggers.
   ///
   /// \param [in] once
   ///   If a pointer is passed to a std::once_flag, then it will be used to
   ///   ensure the given warning is only broadcast once.
   static void
   ReportWarning(std::string message,
-                llvm::Optional<lldb::user_id_t> debugger_id = llvm::None,
+                std::optional<lldb::user_id_t> debugger_id = std::nullopt,
                 std::once_flag *once = nullptr);
 
   /// Report error events.
   ///
-  /// Progress events will be delivered to any debuggers that have listeners
+  /// Error events will be delivered to any debuggers that have listeners
   /// for the eBroadcastBitError.
   ///
   /// \param[in] message
@@ -413,19 +417,43 @@ public:
   ///
   /// \param [in] debugger_id
   ///   If this optional parameter has a value, it indicates the unique
-  ///   debugger identifier that this progress should be delivered to. If this
-  ///   optional parameter does not have a value, the progress will be
-  ///   delivered to all debuggers.
+  ///   debugger identifier that this diagnostic should be delivered to. If
+  ///   this optional parameter does not have a value, the diagnostic event
+  ///   will be delivered to all debuggers.
   ///
   /// \param [in] once
   ///   If a pointer is passed to a std::once_flag, then it will be used to
   ///   ensure the given error is only broadcast once.
   static void
   ReportError(std::string message,
-              llvm::Optional<lldb::user_id_t> debugger_id = llvm::None,
+              std::optional<lldb::user_id_t> debugger_id = std::nullopt,
               std::once_flag *once = nullptr);
 
+  /// Report info events.
+  ///
+  /// Unlike warning and error events, info events are not broadcast but are
+  /// logged for diagnostic purposes.
+  ///
+  /// \param[in] message
+  ///   The info message to be reported.
+  ///
+  /// \param [in] debugger_id
+  ///   If this optional parameter has a value, it indicates this diagnostic is
+  ///   associated with a unique debugger instance.
+  ///
+  /// \param [in] once
+  ///   If a pointer is passed to a std::once_flag, then it will be used to
+  ///   ensure the given info is only logged once.
+  static void
+  ReportInfo(std::string message,
+             std::optional<lldb::user_id_t> debugger_id = std::nullopt,
+             std::once_flag *once = nullptr);
+
   static void ReportSymbolChange(const ModuleSpec &module_spec);
+
+  void
+  SetDestroyCallback(lldb_private::DebuggerDestroyCallback destroy_callback,
+                     void *baton);
 
 protected:
   friend class CommandInterpreter;
@@ -461,14 +489,17 @@ protected:
   ///   debugger identifier that this progress should be delivered to. If this
   ///   optional parameter does not have a value, the progress will be
   ///   delivered to all debuggers.
-  static void ReportProgress(uint64_t progress_id, const std::string &message,
-                             uint64_t completed, uint64_t total,
-                             llvm::Optional<lldb::user_id_t> debugger_id);
+  static void ReportProgress(uint64_t progress_id, std::string title,
+                             std::string details, uint64_t completed,
+                             uint64_t total,
+                             std::optional<lldb::user_id_t> debugger_id);
 
   static void ReportDiagnosticImpl(DiagnosticEventData::Type type,
                                    std::string message,
-                                   llvm::Optional<lldb::user_id_t> debugger_id,
+                                   std::optional<lldb::user_id_t> debugger_id,
                                    std::once_flag *once);
+
+  void HandleDestroyCallback();
 
   void PrintProgress(const ProgressEventData &data);
 
@@ -551,7 +582,7 @@ protected:
   IOHandlerStack m_io_handler_stack;
   std::recursive_mutex m_io_handler_synchronous_mutex;
 
-  llvm::Optional<uint64_t> m_current_event_id;
+  std::optional<uint64_t> m_current_event_id;
 
   llvm::StringMap<std::weak_ptr<LogHandler>> m_stream_handlers;
   std::shared_ptr<CallbackLogHandler> m_callback_handler_sp;
@@ -566,6 +597,10 @@ protected:
   lldb::ListenerSP m_forward_listener_sp;
   llvm::once_flag m_clear_once;
   lldb::TargetSP m_dummy_target_sp;
+  Diagnostics::CallbackID m_diagnostics_callback_id;
+
+  lldb_private::DebuggerDestroyCallback m_destroy_callback = nullptr;
+  void *m_destroy_callback_baton = nullptr;
 
   // Events for m_sync_broadcaster
   enum {

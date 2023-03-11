@@ -67,7 +67,7 @@ void CodeGenTypes::addRecordTypeName(const RecordDecl *RD,
     if (RD->getDeclContext())
       RD->printQualifiedName(OS, Policy);
     else
-      RD->printName(OS);
+      RD->printName(OS, Policy);
   } else if (const TypedefNameDecl *TDD = RD->getTypedefNameForAnonDecl()) {
     // FIXME: We should not have to check for a null decl context here.
     // Right now we do it because the implicit Obj-C decls don't have one.
@@ -618,6 +618,8 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
                                            Info.EC.getKnownMinValue() *
                                                Info.NumVectors);
     }
+    case BuiltinType::SveCount:
+      return llvm::TargetExtType::get(getLLVMContext(), "aarch64.svcount");
 #define PPC_VECTOR_TYPE(Name, Id, Size) \
     case BuiltinType::Id: \
       ResultType = \
@@ -633,7 +635,15 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
                                            Info.EC.getKnownMinValue() *
                                            Info.NumVectors);
     }
-   case BuiltinType::Dependent:
+#define WASM_REF_TYPE(Name, MangledName, Id, SingletonId, AS)                  \
+  case BuiltinType::Id: {                                                      \
+    if (BuiltinType::Id == BuiltinType::WasmExternRef)                         \
+      ResultType = CGM.getTargetCodeGenInfo().getWasmExternrefReferenceType(); \
+    else                                                                       \
+      llvm_unreachable("Unexpected wasm reference builtin type!");             \
+  } break;
+#include "clang/Basic/WebAssemblyReferenceTypes.def"
+    case BuiltinType::Dependent:
 #define BUILTIN_TYPE(Id, SingletonId)
 #define PLACEHOLDER_TYPE(Id, SingletonId) \
     case BuiltinType::Id:
@@ -655,7 +665,7 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
     const ReferenceType *RTy = cast<ReferenceType>(Ty);
     QualType ETy = RTy->getPointeeType();
     llvm::Type *PointeeType = ConvertTypeForMem(ETy);
-    unsigned AS = Context.getTargetAddressSpace(ETy);
+    unsigned AS = getTargetAddressSpace(ETy);
     ResultType = llvm::PointerType::get(PointeeType, AS);
     break;
   }
@@ -665,7 +675,7 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
     llvm::Type *PointeeType = ConvertTypeForMem(ETy);
     if (PointeeType->isVoidTy())
       PointeeType = llvm::Type::getInt8Ty(getLLVMContext());
-    unsigned AS = Context.getTargetAddressSpace(ETy);
+    unsigned AS = getTargetAddressSpace(ETy);
     ResultType = llvm::PointerType::get(PointeeType, AS);
     break;
   }
@@ -772,10 +782,10 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
     // Block pointers lower to function type. For function type,
     // getTargetAddressSpace() returns default address space for
     // function pointer i.e. program address space. Therefore, for block
-    // pointers, it is important to pass qualifiers when calling
-    // getTargetAddressSpace(), to ensure that we get the address space
-    // for data pointers and not function pointers.
-    unsigned AS = Context.getTargetAddressSpace(FTy.getQualifiers());
+    // pointers, it is important to pass the pointee AST address space when
+    // calling getTargetAddressSpace(), to ensure that we get the LLVM IR
+    // address space for data pointers and not function pointers.
+    unsigned AS = Context.getTargetAddressSpace(FTy.getAddressSpace());
     ResultType = llvm::PointerType::get(PointeeType, AS);
     break;
   }
@@ -807,8 +817,8 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
         ResultType,
         llvm::ArrayType::get(CGM.Int8Ty, (atomicSize - valueSize) / 8)
       };
-      ResultType = llvm::StructType::get(getLLVMContext(),
-                                         llvm::makeArrayRef(elts));
+      ResultType =
+          llvm::StructType::get(getLLVMContext(), llvm::ArrayRef(elts));
     }
     break;
   }
@@ -957,4 +967,14 @@ bool CodeGenTypes::isZeroInitializable(QualType T) {
 
 bool CodeGenTypes::isZeroInitializable(const RecordDecl *RD) {
   return getCGRecordLayout(RD).isZeroInitializable();
+}
+
+unsigned CodeGenTypes::getTargetAddressSpace(QualType T) const {
+  // Return the address space for the type. If the type is a
+  // function type without an address space qualifier, the
+  // program address space is used. Otherwise, the target picks
+  // the best address space based on the type information
+  return T->isFunctionType() && !T.hasAddressSpace()
+             ? getDataLayout().getProgramAddressSpace()
+             : getContext().getTargetAddressSpace(T.getAddressSpace());
 }

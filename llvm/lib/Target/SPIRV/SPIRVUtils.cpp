@@ -206,9 +206,9 @@ SPIRV::MemorySemantics::MemorySemantics getMemSemantics(AtomicOrdering Ord) {
   case AtomicOrdering::Unordered:
   case AtomicOrdering::Monotonic:
   case AtomicOrdering::NotAtomic:
-  default:
     return SPIRV::MemorySemantics::None;
   }
+  llvm_unreachable(nullptr);
 }
 
 MachineInstr *getDefInstrMaybeConstant(Register &ConstReg,
@@ -332,23 +332,28 @@ std::string getOclOrSpirvBuiltinDemangledName(StringRef Name) {
   return Name.substr(Start, Len).str();
 }
 
-static bool isOpenCLBuiltinType(const StructType *SType) {
-  return SType->isOpaque() && SType->hasName() &&
-         SType->getName().startswith("opencl.");
+const Type *getTypedPtrEltType(const Type *Ty) {
+  auto PType = dyn_cast<PointerType>(Ty);
+  if (!PType || PType->isOpaque())
+    return Ty;
+  return PType->getNonOpaquePointerElementType();
 }
 
-static bool isSPIRVBuiltinType(const StructType *SType) {
-  return SType->isOpaque() && SType->hasName() &&
-         SType->getName().startswith("spirv.");
+static bool hasBuiltinTypePrefix(StringRef Name) {
+  if (Name.starts_with("opencl.") || Name.starts_with("spirv."))
+    return true;
+  return false;
 }
 
 bool isSpecialOpaqueType(const Type *Ty) {
-  if (auto PType = dyn_cast<PointerType>(Ty)) {
-    if (!PType->isOpaque())
-      Ty = PType->getNonOpaquePointerElementType();
-  }
-  if (auto SType = dyn_cast<StructType>(Ty))
-    return isOpenCLBuiltinType(SType) || isSPIRVBuiltinType(SType);
+  const StructType *SType = dyn_cast<StructType>(getTypedPtrEltType(Ty));
+  if (SType && SType->hasName())
+    return hasBuiltinTypePrefix(SType->getName());
+
+  if (const TargetExtType *EType =
+          dyn_cast<TargetExtType>(getTypedPtrEltType(Ty)))
+    return hasBuiltinTypePrefix(EType->getName());
+
   return false;
 }
 } // namespace llvm

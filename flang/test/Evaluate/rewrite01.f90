@@ -112,6 +112,7 @@ subroutine len_test(a,b, c, d, e, n, m)
   external d
   integer, intent(in) :: n, m
   character(n), intent(in) :: e
+  character(5), parameter :: cparam = "abc  "
   interface
      function fun1(L)
        character(L) :: fun1
@@ -155,6 +156,14 @@ subroutine len_test(a,b, c, d, e, n, m)
   print *, len(fun1(n-m))
   !CHECK: PRINT *, len(mofun(m+1_4))
   print *, len(mofun(m+1))
+  !CHECK: PRINT *, 3_4
+  print *, len(trim(cparam))
+  !CHECK: PRINT *, len(trim(c))
+  print *, len(trim(c))
+  !CHECK: PRINT *, 40_4
+  print *, len(repeat(c, 4))
+  !CHECK: PRINT *, len(repeat(c,int(i,kind=8)))
+  print *, len(repeat(c, i))
 end subroutine len_test
 
 !CHECK-LABEL: associate_tests
@@ -184,6 +193,27 @@ subroutine associate_tests(p)
     !CHECK: PRINT *, 1_8, 11_8, 11_8
     print *, lbound(x, 1, kind=8), ubound(x, 1, kind=8), size(x, 1, kind=8)
   end associate
+end subroutine
+
+!CHECK-LABEL: array_constructor
+subroutine array_constructor()
+  interface
+    function return_allocatable()
+     real, allocatable :: return_allocatable(:)
+    end function
+  end interface
+  !CHECK: PRINT *, size([REAL(4)::return_allocatable(),return_allocatable()])
+  print *, size([return_allocatable(), return_allocatable()])
+end subroutine
+
+!CHECK-LABEL: array_ctor_implied_do_index
+subroutine array_ctor_implied_do_index(x, j)
+  integer :: x(:)
+  integer(8) :: j
+  !CHECK: PRINT *, size([INTEGER(4)::(x(1_8:i:1_8),INTEGER(8)::i=1_8,2_8,1_8)])
+  print *, size([(x(1:i), integer(8)::i=1,2)])
+  !CHECK: PRINT *, int(0_8+2_8*(0_8+max((j-1_8+1_8)/1_8,0_8)),kind=4)
+  print *, size([(x(1:j), integer(8)::i=1,2)])
 end subroutine
 
 end module

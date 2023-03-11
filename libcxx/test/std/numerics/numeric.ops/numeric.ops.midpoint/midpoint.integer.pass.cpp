@@ -17,6 +17,8 @@
 #include <limits>
 #include <numeric>
 #include <cassert>
+#include <cstddef>
+#include <cstdint>
 #include "test_macros.h"
 
 template <typename T>
@@ -126,7 +128,7 @@ int main(int, char**)
 
     unsigned_test<uint8_t>();
     unsigned_test<uint16_t>();
-    unsigned_test<uint32_t>();
+    unsigned_test<std::uint32_t>();
     unsigned_test<uint64_t>();
 
 #ifndef TEST_HAS_NO_INT128

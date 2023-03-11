@@ -9,7 +9,6 @@
 #include <charconv>
 #include <chrono>
 #include <cmath>
-#include <fstream>
 #include <functional>
 #include <iterator>
 #include <limits>
@@ -49,42 +48,21 @@
 
 using namespace std;
 
-void initialize_randomness(mt19937_64& mt64, const int argc, char** const argv) {
+void initialize_randomness(mt19937_64& mt64, const int argc, char** const /*argv*/) {
     constexpr size_t n = mt19937_64::state_size;
     constexpr size_t w = mt19937_64::word_size;
     static_assert(w % 32 == 0);
     constexpr size_t k = w / 32;
 
-    vector<uint32_t> vec(n * k);
+    vector<std::uint32_t> vec(n * k);
 
     puts("USAGE:");
     puts("test.exe              : generates seed data from random_device.");
-    puts("test.exe filename.txt : loads seed data from a given text file.");
 
     if (argc == 1) {
         random_device rd;
         generate(vec.begin(), vec.end(), ref(rd));
         puts("Generated seed data.");
-    } else if (argc == 2) {
-        const char* const filename = argv[1];
-
-        ifstream file(filename);
-
-        if (!file) {
-            printf("ERROR: Can't open %s.\n", filename);
-            abort();
-        }
-
-        for (auto& elem : vec) {
-            file >> elem;
-
-            if (!file) {
-                printf("ERROR: Can't read seed data from %s.\n", filename);
-                abort();
-            }
-        }
-
-        printf("Loaded seed data from %s.\n", filename);
     } else {
         puts("ERROR: Too many command-line arguments.");
         abort();
@@ -424,7 +402,7 @@ void test_from_chars(const string_view input, const BaseOrFmt base_or_fmt, const
     if (correct_ec == errc{} || (is_floating_point_v<T> && correct_ec == errc::result_out_of_range)) {
         if constexpr (is_floating_point_v<T>) {
             if (mode == TestFromCharsMode::Normal) {
-                using Uint = conditional_t<is_same_v<T, float>, uint32_t, uint64_t>;
+                using Uint = conditional_t<is_same_v<T, float>, std::uint32_t, uint64_t>;
                 assert(opt_correct.has_value());
                 assert(_Bit_cast<Uint>(dest) == _Bit_cast<Uint>(opt_correct.value()));
             } else {
@@ -565,7 +543,7 @@ void all_integer_tests() {
     test_from_chars<int>("-2147483650", 10, 11, out_ran); // beyond risky
 }
 
-void assert_message_bits(const bool b, const char* const msg, const uint32_t bits) {
+void assert_message_bits(const bool b, const char* const msg, const std::uint32_t bits) {
     if (!b) {
         fprintf(stderr, "%s failed for 0x%08zX\n", msg, static_cast<size_t>(bits));
         fprintf(stderr, "This is a randomized test.\n");
@@ -586,26 +564,26 @@ void assert_message_bits(const bool b, const char* const msg, const uint64_t bit
     }
 }
 
-constexpr uint32_t FractionBits = 10; // Tunable for test coverage vs. performance.
+constexpr std::uint32_t FractionBits = 10; // Tunable for test coverage vs. performance.
 static_assert(FractionBits >= 1, "Must test at least 1 fraction bit.");
 static_assert(FractionBits <= 23, "There are only 23 fraction bits in a float.");
 
-constexpr uint32_t Fractions = 1U << FractionBits;
-constexpr uint32_t Mask32    = ~((1U << FractionBits) - 1U);
+constexpr std::uint32_t Fractions = 1U << FractionBits;
+constexpr std::uint32_t Mask32    = ~((1U << FractionBits) - 1U);
 constexpr uint64_t Mask64    = ~((1ULL << FractionBits) - 1ULL);
 
-constexpr uint32_t PrefixesToTest = 100; // Tunable for test coverage vs. performance.
+constexpr std::uint32_t PrefixesToTest = 100; // Tunable for test coverage vs. performance.
 static_assert(PrefixesToTest >= 1, "Must test at least 1 prefix.");
 
-constexpr uint32_t PrefixLimit = 2 // sign bit
+constexpr std::uint32_t PrefixLimit = 2 // sign bit
                                * 255 // non-INF/NAN exponents for float
                                * (1U << (23 - FractionBits)); // fraction bits in prefix
 static_assert(PrefixesToTest <= PrefixLimit, "Too many prefixes.");
 
 template <bool IsDouble>
-void test_floating_prefix(const conditional_t<IsDouble, uint64_t, uint32_t> prefix) {
+void test_floating_prefix(const conditional_t<IsDouble, uint64_t, std::uint32_t> prefix) {
 
-    using UIntType     = conditional_t<IsDouble, uint64_t, uint32_t>;
+    using UIntType     = conditional_t<IsDouble, uint64_t, std::uint32_t>;
     using FloatingType = conditional_t<IsDouble, double, float>;
 
     // "-1.2345678901234567e-100" or "-1.23456789e-10"
@@ -629,7 +607,7 @@ void test_floating_prefix(const conditional_t<IsDouble, uint64_t, uint32_t> pref
     constexpr size_t stdio_buffer_size = 1 + (IsDouble ? 309 : 39) + 1;
     char stdio_buffer[stdio_buffer_size];
 
-    for (uint32_t frac = 0; frac < Fractions; ++frac) {
+    for (std::uint32_t frac = 0; frac < Fractions; ++frac) {
         const UIntType bits      = prefix + frac;
         const FloatingType input = _Bit_cast<FloatingType>(bits);
 
@@ -665,9 +643,9 @@ void test_floating_prefix(const conditional_t<IsDouble, uint64_t, uint32_t> pref
 }
 
 template <bool IsDouble>
-void test_floating_hex_prefix(const conditional_t<IsDouble, uint64_t, uint32_t> prefix) {
+void test_floating_hex_prefix(const conditional_t<IsDouble, uint64_t, std::uint32_t> prefix) {
 
-    using UIntType     = conditional_t<IsDouble, uint64_t, uint32_t>;
+    using UIntType     = conditional_t<IsDouble, uint64_t, std::uint32_t>;
     using FloatingType = conditional_t<IsDouble, double, float>;
 
     // The precision is the number of hexits after the decimal point.
@@ -683,7 +661,7 @@ void test_floating_hex_prefix(const conditional_t<IsDouble, uint64_t, uint32_t> 
     FloatingType val;
 #endif
 
-    for (uint32_t frac = 0; frac < Fractions; ++frac) {
+    for (std::uint32_t frac = 0; frac < Fractions; ++frac) {
         const UIntType bits      = prefix + frac;
         const FloatingType input = _Bit_cast<FloatingType>(bits);
 
@@ -703,9 +681,9 @@ void test_floating_hex_prefix(const conditional_t<IsDouble, uint64_t, uint32_t> 
 }
 
 template <bool IsDouble>
-void test_floating_precision_prefix(const conditional_t<IsDouble, uint64_t, uint32_t> prefix) {
+void test_floating_precision_prefix(const conditional_t<IsDouble, uint64_t, std::uint32_t> prefix) {
 
-    using UIntType     = conditional_t<IsDouble, uint64_t, uint32_t>;
+    using UIntType     = conditional_t<IsDouble, uint64_t, std::uint32_t>;
     using FloatingType = conditional_t<IsDouble, double, float>;
 
     // Precision for min subnormal in fixed notation. (More than enough for scientific notation.)
@@ -730,7 +708,7 @@ void test_floating_precision_prefix(const conditional_t<IsDouble, uint64_t, uint
     char general_buffer[general_buffer_size];
     char general_stdio_buffer[general_buffer_size + 1]; // + null terminator
 
-    for (uint32_t frac = 0; frac < Fractions; ++frac) {
+    for (std::uint32_t frac = 0; frac < Fractions; ++frac) {
         const UIntType bits      = prefix + frac;
         const FloatingType input = _Bit_cast<FloatingType>(bits);
 
@@ -789,10 +767,10 @@ void test_floating_prefixes(mt19937_64& mt64) {
     }
 
     {
-        set<uint32_t> prefixes32;
+        set<std::uint32_t> prefixes32;
 
         while (prefixes32.size() < PrefixesToTest) {
-            const uint32_t val = static_cast<uint32_t>(mt64());
+            const std::uint32_t val = static_cast<std::uint32_t>(mt64());
 
             if ((val & 0x7F800000U) != 0x7F800000U) { // skip INF/NAN
                 prefixes32.insert(val & Mask32);

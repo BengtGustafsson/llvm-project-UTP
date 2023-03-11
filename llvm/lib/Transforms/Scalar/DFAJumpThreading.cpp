@@ -168,50 +168,7 @@ private:
   OptimizationRemarkEmitter *ORE;
 };
 
-class DFAJumpThreadingLegacyPass : public FunctionPass {
-public:
-  static char ID; // Pass identification
-  DFAJumpThreadingLegacyPass() : FunctionPass(ID) {}
-
-  void getAnalysisUsage(AnalysisUsage &AU) const override {
-    AU.addRequired<AssumptionCacheTracker>();
-    AU.addRequired<DominatorTreeWrapperPass>();
-    AU.addPreserved<DominatorTreeWrapperPass>();
-    AU.addRequired<TargetTransformInfoWrapperPass>();
-    AU.addRequired<OptimizationRemarkEmitterWrapperPass>();
-  }
-
-  bool runOnFunction(Function &F) override {
-    if (skipFunction(F))
-      return false;
-
-    AssumptionCache *AC =
-        &getAnalysis<AssumptionCacheTracker>().getAssumptionCache(F);
-    DominatorTree *DT = &getAnalysis<DominatorTreeWrapperPass>().getDomTree();
-    TargetTransformInfo *TTI =
-        &getAnalysis<TargetTransformInfoWrapperPass>().getTTI(F);
-    OptimizationRemarkEmitter *ORE =
-        &getAnalysis<OptimizationRemarkEmitterWrapperPass>().getORE();
-
-    return DFAJumpThreading(AC, DT, TTI, ORE).run(F);
-  }
-};
 } // end anonymous namespace
-
-char DFAJumpThreadingLegacyPass::ID = 0;
-INITIALIZE_PASS_BEGIN(DFAJumpThreadingLegacyPass, "dfa-jump-threading",
-                      "DFA Jump Threading", false, false)
-INITIALIZE_PASS_DEPENDENCY(AssumptionCacheTracker)
-INITIALIZE_PASS_DEPENDENCY(DominatorTreeWrapperPass)
-INITIALIZE_PASS_DEPENDENCY(TargetTransformInfoWrapperPass)
-INITIALIZE_PASS_DEPENDENCY(OptimizationRemarkEmitterWrapperPass)
-INITIALIZE_PASS_END(DFAJumpThreadingLegacyPass, "dfa-jump-threading",
-                    "DFA Jump Threading", false, false)
-
-// Public interface to the DFA Jump Threading pass
-FunctionPass *llvm::createDFAJumpThreadingPass() {
-  return new DFAJumpThreadingLegacyPass();
-}
 
 namespace {
 
@@ -724,7 +681,7 @@ private:
 
     // Make DeterminatorBB the first element in Path.
     PathType Path = TPath.getPath();
-    auto ItDet = std::find(Path.begin(), Path.end(), DeterminatorBB);
+    auto ItDet = llvm::find(Path, DeterminatorBB);
     std::rotate(Path.begin(), ItDet, Path.end());
 
     bool IsDetBBSeen = false;
@@ -798,7 +755,7 @@ private:
 
       // Otherwise update Metrics for all blocks that will be cloned. If any
       // block is already cloned and would be reused, don't double count it.
-      auto DetIt = std::find(PathBBs.begin(), PathBBs.end(), Determinator);
+      auto DetIt = llvm::find(PathBBs, Determinator);
       for (auto BBIt = DetIt; BBIt != PathBBs.end(); BBIt++) {
         BB = *BBIt;
         VisitedBB = getClonedBB(BB, NextState, DuplicateMap);
@@ -943,7 +900,7 @@ private:
     if (PathBBs.front() == Determinator)
       PathBBs.pop_front();
 
-    auto DetIt = std::find(PathBBs.begin(), PathBBs.end(), Determinator);
+    auto DetIt = llvm::find(PathBBs, Determinator);
     auto Prev = std::prev(DetIt);
     BasicBlock *PrevBB = *Prev;
     for (auto BBIt = DetIt; BBIt != PathBBs.end(); BBIt++) {

@@ -8,6 +8,7 @@ set(MODULES
   "__fortran_builtins"
   "__fortran_ieee_exceptions"
   "__fortran_type_info"
+  "__fortran_ppc_intrinsics"
   "ieee_arithmetic"
   "ieee_exceptions"
   "ieee_features"
@@ -27,6 +28,8 @@ if (NOT CMAKE_CROSSCOMPILING)
     set(base ${FLANG_INTRINSIC_MODULES_DIR}/${filename})
     if(${filename} STREQUAL "__fortran_builtins")
       set(depends "")
+    elseif(${filename} STREQUAL "__fortran_ppc_intrinsics")
+      set(depends "")
     else()
       set(depends ${FLANG_INTRINSIC_MODULES_DIR}/__fortran_builtins.mod)
       if(NOT ${filename} STREQUAL "__fortran_type_info")
@@ -39,7 +42,7 @@ if (NOT CMAKE_CROSSCOMPILING)
     endif()
     add_custom_command(OUTPUT ${base}.mod
       COMMAND ${CMAKE_COMMAND} -E make_directory ${FLANG_INTRINSIC_MODULES_DIR}
-      COMMAND flang-new -fc1 -fsyntax-only -module-dir ${FLANG_INTRINSIC_MODULES_DIR}
+      COMMAND flang-new -fc1 -cpp -fsyntax-only -module-dir ${FLANG_INTRINSIC_MODULES_DIR}
         ${FLANG_SOURCE_DIR}/module/${filename}.f90
       DEPENDS flang-new ${FLANG_SOURCE_DIR}/module/${filename}.f90 ${depends}
     )

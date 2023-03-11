@@ -469,10 +469,19 @@ public:
         DeltaAddr(0) {}
 
   static Expected<std::unique_ptr<InProcessDeltaMapper>> Create() {
-    auto PageSize = sys::Process::getPageSize();
-    if (!PageSize)
-      return PageSize.takeError();
-    return std::make_unique<InProcessDeltaMapper>(*PageSize, SlabAddress);
+    size_t PageSize = SlabPageSize;
+    if (!PageSize) {
+      if (auto PageSizeOrErr = sys::Process::getPageSize())
+        PageSize = *PageSizeOrErr;
+      else
+        return PageSizeOrErr.takeError();
+    }
+
+    if (PageSize == 0)
+      return make_error<StringError>("Page size is zero",
+                                     inconvertibleErrorCode());
+
+    return std::make_unique<InProcessDeltaMapper>(PageSize, SlabAddress);
   }
 
   void reserve(size_t NumBytes, OnReservedFunction OnReserved) override {
@@ -497,8 +506,14 @@ public:
   }
 
   void initialize(AllocInfo &AI, OnInitializedFunction OnInitialized) override {
-    auto FixedAI = AI;
+    // Slide mapping based on delta, make all segments read-writable, and
+    // discard allocation actions.
+    auto FixedAI = std::move(AI);
     FixedAI.MappingBase -= DeltaAddr;
+    for (auto &Seg : FixedAI.Segments)
+      Seg.AG = AllocGroup(MemProt::Read | MemProt::Write,
+                          Seg.AG.getMemDeallocPolicy());
+    FixedAI.Actions.clear();
     InProcessMemoryMapper::initialize(
         FixedAI, [this, OnInitialized = std::move(OnInitialized)](
                      Expected<ExecutorAddr> Result) mutable {
@@ -557,23 +572,27 @@ Expected<uint64_t> getSlabAllocSize(StringRef SizeString) {
 }
 
 static std::unique_ptr<JITLinkMemoryManager> createInProcessMemoryManager() {
-  if (!SlabAllocateSizeString.empty()) {
-    auto SlabSize = ExitOnErr(getSlabAllocSize(SlabAllocateSizeString));
+  uint64_t SlabSize;
+#ifdef _WIN32
+  SlabSize = 1024 * 1024;
+#else
+  SlabSize = 1024 * 1024 * 1024;
+#endif
 
+  if (!SlabAllocateSizeString.empty())
+    SlabSize = ExitOnErr(getSlabAllocSize(SlabAllocateSizeString));
+
+  // If this is a -no-exec case and we're tweaking the slab address or size then
+  // use the delta mapper.
+  if (NoExec && (SlabAddress || SlabPageSize))
     return ExitOnErr(
         MapperJITLinkMemoryManager::CreateWithMapper<InProcessDeltaMapper>(
             SlabSize));
-  }
 
-#ifdef _WIN32
+  // Otherwise use the standard in-process mapper.
   return ExitOnErr(
       MapperJITLinkMemoryManager::CreateWithMapper<InProcessMemoryMapper>(
-          1024 * 1024));
-#else
-  return ExitOnErr(
-      MapperJITLinkMemoryManager::CreateWithMapper<InProcessMemoryMapper>(
-          1024 * 1024 * 1024));
-#endif
+          SlabSize));
 }
 
 Expected<std::unique_ptr<jitlink::JITLinkMemoryManager>>
@@ -928,10 +947,10 @@ Session::Session(std::unique_ptr<ExecutorProcessControl> EPC, Error &Err)
     Error notifyFailed(MaterializationResponsibility &MR) override {
       return Error::success();
     }
-    Error notifyRemovingResources(ResourceKey K) override {
+    Error notifyRemovingResources(JITDylib &JD, ResourceKey K) override {
       return Error::success();
     }
-    void notifyTransferringResources(ResourceKey DstKey,
+    void notifyTransferringResources(JITDylib &JD, ResourceKey DstKey,
                                      ResourceKey SrcKey) override {}
 
   private:
@@ -963,7 +982,7 @@ Session::Session(std::unique_ptr<ExecutorProcessControl> EPC, Error &Err)
 
   ExitOnErr(loadDylibs(*this));
 
-  auto &TT = ES.getExecutorProcessControl().getTargetTriple();
+  auto &TT = ES.getTargetTriple();
 
   if (DebuggerSupport && TT.isOSBinFormatMachO())
     ObjLayer.addPlugin(ExitOnErr(
@@ -1053,14 +1072,13 @@ void Session::modifyPassConfig(const Triple &TT,
                                PassConfiguration &PassConfig) {
   if (!CheckFiles.empty())
     PassConfig.PostFixupPasses.push_back([this](LinkGraph &G) {
-      auto &EPC = ES.getExecutorProcessControl();
-      if (EPC.getTargetTriple().getObjectFormat() == Triple::ELF)
+      if (ES.getTargetTriple().getObjectFormat() == Triple::ELF)
         return registerELFGraphInfo(*this, G);
 
-      if (EPC.getTargetTriple().getObjectFormat() == Triple::MachO)
+      if (ES.getTargetTriple().getObjectFormat() == Triple::MachO)
         return registerMachOGraphInfo(*this, G);
 
-      if (EPC.getTargetTriple().getObjectFormat() == Triple::COFF)
+      if (ES.getTargetTriple().getObjectFormat() == Triple::COFF)
         return registerCOFFGraphInfo(*this, G);
 
       return make_error<StringError>("Unsupported object format for GOT/stub "
@@ -1478,7 +1496,7 @@ getObjectFileInterfaceHidden(ExecutionSession &ES, MemoryBufferRef ObjBuffer) {
 static SmallVector<StringRef, 5> getSearchPathsFromEnvVar(Session &S) {
   // FIXME: Handle EPC environment.
   SmallVector<StringRef, 5> PathVec;
-  auto TT = S.ES.getExecutorProcessControl().getTargetTriple();
+  auto TT = S.ES.getTargetTriple();
   if (TT.isOSBinFormatCOFF())
     StringRef(getenv("PATH")).split(PathVec, ";");
   else if (TT.isOSBinFormatELF())
@@ -1613,8 +1631,7 @@ static Error addLibraries(Session &S,
       break;
     }
     auto G = StaticLibraryDefinitionGenerator::Load(
-        S.ObjLayer, Path, S.ES.getExecutorProcessControl().getTargetTriple(),
-        std::move(GetObjFileInterface));
+        S.ObjLayer, Path, std::move(GetObjFileInterface));
     if (!G)
       return G.takeError();
 
@@ -1849,14 +1866,12 @@ static TargetInfo getTargetInfo(const Triple &TT) {
 }
 
 static Error runChecks(Session &S) {
-  const auto &TT = S.ES.getExecutorProcessControl().getTargetTriple();
-
   if (CheckFiles.empty())
     return Error::success();
 
   LLVM_DEBUG(dbgs() << "Running checks...\n");
 
-  auto TI = getTargetInfo(TT);
+  auto TI = getTargetInfo(S.ES.getTargetTriple());
 
   auto IsSymbolValid = [&S](StringRef Symbol) {
     return S.isSymbolRegistered(Symbol);
@@ -1880,7 +1895,7 @@ static Error runChecks(Session &S) {
 
   RuntimeDyldChecker Checker(
       IsSymbolValid, GetSymbolInfo, GetSectionInfo, GetStubInfo, GetGOTInfo,
-      TT.isLittleEndian() ? support::little : support::big,
+      S.ES.getTargetTriple().isLittleEndian() ? support::little : support::big,
       TI.Disassembler.get(), TI.InstPrinter.get(), dbgs());
 
   std::string CheckLineStart = "# " + CheckName + ":";
@@ -1923,8 +1938,7 @@ static Expected<JITEvaluatedSymbol> getMainEntryPoint(Session &S) {
 
 static Expected<JITEvaluatedSymbol> getOrcRuntimeEntryPoint(Session &S) {
   std::string RuntimeEntryPoint = "__orc_rt_run_program_wrapper";
-  const auto &TT = S.ES.getExecutorProcessControl().getTargetTriple();
-  if (TT.getObjectFormat() == Triple::MachO)
+  if (S.ES.getTargetTriple().getObjectFormat() == Triple::MachO)
     RuntimeEntryPoint = '_' + RuntimeEntryPoint;
   return S.ES.lookup(S.JDSearchOrder, S.ES.intern(RuntimeEntryPoint));
 }
@@ -1961,8 +1975,7 @@ static Expected<JITEvaluatedSymbol> getEntryPoint(Session &S) {
 
 static Expected<int> runWithRuntime(Session &S, ExecutorAddr EntryPointAddr) {
   StringRef DemangledEntryPoint = EntryPointName;
-  const auto &TT = S.ES.getExecutorProcessControl().getTargetTriple();
-  if (TT.getObjectFormat() == Triple::MachO &&
+  if (S.ES.getTargetTriple().getObjectFormat() == Triple::MachO &&
       DemangledEntryPoint.front() == '_')
     DemangledEntryPoint = DemangledEntryPoint.drop_front();
   using llvm::orc::shared::SPSString;

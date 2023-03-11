@@ -323,21 +323,26 @@ namespace std { class type_info; }
 
 void unevaluated() {
   decltype(co_await a); // expected-error {{'co_await' cannot be used in an unevaluated context}}
-                        // expected-warning@-1 {{declaration does not declare anything}}
+}
+
+void unevaluated2() {
   sizeof(co_await a); // expected-error {{'co_await' cannot be used in an unevaluated context}}
-                      // expected-error@-1 {{invalid application of 'sizeof' to an incomplete type 'void'}}
-                      // expected-warning@-2 {{expression with side effects has no effect in an unevaluated context}}
+}
+
+void unevaluated3() {
   typeid(co_await a); // expected-error {{'co_await' cannot be used in an unevaluated context}}
-                      // expected-warning@-1 {{expression with side effects has no effect in an unevaluated context}}
-                      // expected-warning@-2 {{expression result unused}}
+}
+
+void unevaluated4() {
   decltype(co_yield 1); // expected-error {{'co_yield' cannot be used in an unevaluated context}}
-                        // expected-warning@-1 {{declaration does not declare anything}}
+}
+
+void unevaluated5() {
   sizeof(co_yield 2); // expected-error {{'co_yield' cannot be used in an unevaluated context}}
-                      // expected-error@-1 {{invalid application of 'sizeof' to an incomplete type 'void'}}
-                      // expected-warning@-2 {{expression with side effects has no effect in an unevaluated context}}
+}
+
+void unevaluated6() {
   typeid(co_yield 3); // expected-error {{'co_yield' cannot be used in an unevaluated context}}
-                      // expected-warning@-1 {{expression with side effects has no effect in an unevaluated context}}
-                      // expected-warning@-2 {{expression result unused}}
 }
 
 // [expr.await]p2: "An await-expression shall not appear in a default argument."
@@ -929,7 +934,7 @@ struct std::coroutine_traits<int, mismatch_gro_type_tag2> {
 
 extern "C" int f(mismatch_gro_type_tag2) {
   // cxx2b-error@-1 {{cannot initialize return object of type 'int' with an rvalue of type 'void *'}}
-  // cxx14_20-error@-2 {{cannot initialize return object of type 'int' with an rvalue of type 'void *'}}
+  // cxx14_20-error@-2 {{cannot initialize return object of type 'int' with an lvalue of type 'void *'}}
   co_return; //expected-note {{function is a coroutine due to use of 'co_return' here}}
 }
 
@@ -1062,7 +1067,7 @@ struct NoCopy {
 };
 template <class T, class U>
 void test_dependent_param(T t, U) {
-  // expected-error@-1 {{call to deleted constructor of 'NoCopy<0>'}}
+  // expected-error@-1 {{call to deleted constructor of 'NoCopy<>'}}
   // expected-error@-2 {{call to deleted constructor of 'NoCopy<1>'}}
   ((void)t);
   co_return 42;
@@ -1304,7 +1309,7 @@ struct DepTestType {
   }
 };
 
-template struct DepTestType<int>; // expected-note {{requested here}}
+template struct DepTestType<int>; // expected-note 2{{requested here}}
 template CoroMemberTag DepTestType<int>::test_member_template(long, const char *) const &&;
 
 template CoroMemberTag DepTestType<int>::test_static_template<void>(const char *volatile &, unsigned);

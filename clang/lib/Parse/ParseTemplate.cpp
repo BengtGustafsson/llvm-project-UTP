@@ -341,8 +341,8 @@ Decl *Parser::ParseSingleDeclarationAfterTemplate(
         // Recover as if it were an explicit specialization.
         TemplateParameterLists FakedParamLists;
         FakedParamLists.push_back(Actions.ActOnTemplateParameterList(
-            0, SourceLocation(), TemplateInfo.TemplateLoc, LAngleLoc, None,
-            LAngleLoc, nullptr));
+            0, SourceLocation(), TemplateInfo.TemplateLoc, LAngleLoc,
+            std::nullopt, LAngleLoc, nullptr));
 
         return ParseFunctionDefinition(
             DeclaratorInfo, ParsedTemplateInfo(&FakedParamLists,
@@ -392,7 +392,7 @@ Parser::ParseConceptDefinition(const ParsedTemplateInfo &TemplateInfo,
 
   SourceLocation BoolKWLoc;
   if (TryConsumeToken(tok::kw_bool, BoolKWLoc))
-    Diag(Tok.getLocation(), diag::ext_concept_legacy_bool_keyword) <<
+    Diag(Tok.getLocation(), diag::err_concept_legacy_bool_keyword) <<
         FixItHint::CreateRemoval(SourceLocation(BoolKWLoc));
 
   DiagnoseAndSkipCXX11Attributes();
@@ -882,29 +882,19 @@ NamedDecl *Parser::ParseTypeParameter(unsigned Depth, unsigned Position) {
 /// ParseTemplateTemplateParameter - Handle the parsing of template
 /// template parameters.
 ///
-///       template-parameter:    [C++ temp.param]
-///         ...
-///         'template' '<' template-parameter-list '>' type-parameter-key
-///                  ...[opt] identifier[opt]
-///         'template' '<' template-parameter-list '>' type-parameter-key
-///                  identifier[opt] = id-expression
-///
+///       type-parameter:    [C++ temp.param]
+///         template-head type-parameter-key ...[opt] identifier[opt]
+///         template-head type-parameter-key identifier[opt] = id-expression
 ///       type-parameter-key:
 ///         'class'
 ///         'typename'       [C++1z]
-///
-/// Also handles universal template parameters as these start with the same token
-///      
-///       template-parameter:    [C++ temp.param]
-///         ...
-///         'template' 'auto' ...[opt] identifier[opt]
-/// TODO:
-///         'template' 'auto' identifier[opt] = initializer-clause
-///         'template' 'auto' identifier[opt] = type-id
-
-NamedDecl *
-Parser::ParseTemplateTemplateParameter(unsigned Depth, unsigned Position) {
-  assert((Tok.is(tok::kw_template) || Tok.is(tok::kw___any)) && "Expected 'template' keyword");
+///       template-head:     [C++2a]
+///         'template' '<' template-parameter-list '>'
+///             requires-clause[opt]
+///  Also Handles universal template parameters.
+NamedDecl *Parser::ParseTemplateTemplateParameter(unsigned Depth,
+                                                  unsigned Position) {
+  assert(Tok.is(tok::kw_template) && "Expected 'template' keyword");
 
   // Handle the template <...> part.
   bool IsUniversalTemplateParameter = Tok.is(tok::kw___any);
@@ -925,12 +915,22 @@ Parser::ParseTemplateTemplateParameter(unsigned Depth, unsigned Position) {
       }
   } else {
       // Template template parameter
-
+      ExprResult OptionalRequiresClauseConstraintER;
       {
           MultiParseScope TemplateParmScope(*this);
           if (ParseTemplateParameters(TemplateParmScope, Depth + 1, TemplateParams,
               LAngleLoc, RAngleLoc)) {
               return nullptr;
+          }
+          if (TryConsumeToken(tok::kw_requires)) {
+              OptionalRequiresClauseConstraintER =
+                  Actions.ActOnRequiresClause(ParseConstraintLogicalOrExpression(
+                      /*IsTrailingRequiresClause=*/false));
+              if (!OptionalRequiresClauseConstraintER.isUsable()) {
+                  SkipUntil(tok::comma, tok::greater, tok::greatergreater,
+                      StopAtSemi | StopBeforeMatch);
+                  return nullptr;
+              }
           }
       }
 
@@ -998,14 +998,12 @@ Parser::ParseTemplateTemplateParameter(unsigned Depth, unsigned Position) {
 
   if (IsUniversalTemplateParameter) {
       return Actions.ActOnUniversalTemplateParameter(getCurScope(), TemplateLoc, EllipsisLoc,
-                                                     ParamName, NameLoc, Depth, Position);
+          ParamName, NameLoc, Depth, Position);
   }
-
-  TemplateParameterList *ParamList =
-    Actions.ActOnTemplateParameterList(Depth, SourceLocation(),
-                                       TemplateLoc, LAngleLoc,
-                                       TemplateParams,
-                                       RAngleLoc, nullptr);
+  
+  TemplateParameterList *ParamList = Actions.ActOnTemplateParameterList(
+      Depth, SourceLocation(), TemplateLoc, LAngleLoc, TemplateParams,
+      RAngleLoc, OptionalRequiresClauseConstraintER.get());
 
   // Grab a default argument (if available).
   // Per C++0x [basic.scope.pdecl]p9, we parse the default argument before

@@ -491,7 +491,7 @@ inline Error applyFixup(LinkGraph &G, Block &B, const Edge &E,
   default:
     return make_error<JITLinkError>(
         "In graph " + G.getName() + ", section " + B.getSection().getName() +
-        "unsupported edge kind" + getEdgeKindName(E.getKind()));
+        " unsupported edge kind " + getEdgeKindName(E.getKind()));
   }
 
   return Error::success();
@@ -607,7 +607,7 @@ public:
 private:
   Section &getGOTSection(LinkGraph &G) {
     if (!GOTSection)
-      GOTSection = &G.createSection(getSectionName(), MemProt::Read);
+      GOTSection = &G.createSection(getSectionName(), orc::MemProt::Read);
     return *GOTSection;
   }
 
@@ -645,8 +645,8 @@ public:
 public:
   Section &getStubsSection(LinkGraph &G) {
     if (!PLTSection)
-      PLTSection =
-          &G.createSection(getSectionName(), MemProt::Read | MemProt::Exec);
+      PLTSection = &G.createSection(getSectionName(),
+                                    orc::MemProt::Read | orc::MemProt::Exec);
     return *PLTSection;
   }
 

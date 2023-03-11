@@ -43,7 +43,7 @@
 #include "Targets/XCore.h"
 #include "clang/Basic/Diagnostic.h"
 #include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/Triple.h"
+#include "llvm/TargetParser/Triple.h"
 
 using namespace clang;
 
@@ -81,9 +81,10 @@ void defineCPUMacros(MacroBuilder &Builder, StringRef CPUName, bool Tuning) {
 
 void addCygMingDefines(const LangOptions &Opts, MacroBuilder &Builder) {
   // Mingw and cygwin define __declspec(a) to __attribute__((a)).  Clang
-  // supports __declspec natively under -fms-extensions, but we define a no-op
-  // __declspec macro anyway for pre-processor compatibility.
-  if (Opts.MicrosoftExt)
+  // supports __declspec natively under -fdeclspec (also enabled with
+  // -fms-extensions), but we define a no-op __declspec macro anyway for
+  // pre-processor compatibility.
+  if (Opts.DeclSpecKeyword)
     Builder.defineMacro("__declspec", "__declspec");
   else
     Builder.defineMacro("__declspec(a)", "__attribute__((a))");

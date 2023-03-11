@@ -10,9 +10,9 @@
 #define LLVM_LIBC_TEST_SRC_MATH_HYPOTTEST_H
 
 #include "src/__support/FPUtil/FPBits.h"
+#include "test/UnitTest/FPMatcher.h"
+#include "test/UnitTest/Test.h"
 #include "utils/MPFRWrapper/MPFRUtils.h"
-#include "utils/UnitTest/FPMatcher.h"
-#include "utils/UnitTest/Test.h"
 
 #include <math.h>
 
@@ -24,7 +24,7 @@ private:
   using Func = T (*)(T, T);
   using FPBits = __llvm_libc::fputil::FPBits<T>;
   using UIntType = typename FPBits::UIntType;
-  const T nan = T(FPBits::build_nan(1));
+  const T nan = T(FPBits::build_quiet_nan(1));
   const T inf = T(FPBits::inf());
   const T neg_inf = T(FPBits::neg_inf());
   const T zero = T(FPBits::zero());

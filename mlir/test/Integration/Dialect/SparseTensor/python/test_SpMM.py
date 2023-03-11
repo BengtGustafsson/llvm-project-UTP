@@ -1,4 +1,4 @@
-# RUN: SUPPORT_LIB=%mlir_lib_dir/libmlir_c_runner_utils%shlibext \
+# RUN: env SUPPORT_LIB=%mlir_c_runner_utils \
 # RUN:   %PYTHON %s | FileCheck %s
 
 import ctypes
@@ -123,9 +123,7 @@ def main():
 
     vl = 1
     e = False
-    opt = (f'parallelization-strategy=none '
-           f'vectorization-strategy=none '
-           f'vl={vl} enable-simd-index32={e}')
+    opt = (f'parallelization-strategy=none')
     levels = [[st.DimLevelType.dense, st.DimLevelType.dense],
               [st.DimLevelType.dense, st.DimLevelType.compressed],
               [st.DimLevelType.compressed, st.DimLevelType.dense],
@@ -141,7 +139,7 @@ def main():
       for ordering in orderings:
         for pwidth in bitwidths:
           for iwidth in bitwidths:
-            attr = st.EncodingAttr.get(level, ordering, pwidth, iwidth)
+            attr = st.EncodingAttr.get(level, ordering, None, pwidth, iwidth)
             build_compile_and_run_SpMM(attr, compiler)
             count = count + 1
     # CHECK: Passed 8 tests

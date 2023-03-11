@@ -13,9 +13,11 @@
 // _Tp midpoint(_Tp __a, _Tp __b) noexcept
 //
 
-#include <numeric>
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
+#include <numeric>
+
 #include "test_macros.h"
 
 //  Users are not supposed to provide template argument lists for
@@ -51,7 +53,7 @@ int main(int, char**)
 
     test<uint8_t>();
     test<uint16_t>();
-    test<uint32_t>();
+    test<std::uint32_t>();
     test<uint64_t>();
 
 #ifndef TEST_HAS_NO_INT128

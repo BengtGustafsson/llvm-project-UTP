@@ -14,7 +14,6 @@
 
 #include "llvm/Transforms/IPO/Inliner.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/PriorityWorklist.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/ScopeExit.h"
@@ -109,7 +108,9 @@ static cl::opt<bool>
     EnablePostSCCAdvisorPrinting("enable-scc-inline-advisor-printing",
                                  cl::init(false), cl::Hidden);
 
+namespace llvm {
 extern cl::opt<InlinerFunctionImportStatsOpts> InlinerFunctionImportStats;
+}
 
 static cl::opt<std::string> CGSCCInlineReplayFile(
     "cgscc-inline-replay", cl::init(""), cl::value_desc("filename"),
@@ -554,7 +555,8 @@ inlineCallsImpl(CallGraphSCC &SCC, CallGraph &CG,
 
       // If we inlined or deleted the last possible call site to the function,
       // delete the function body now.
-      if (Callee && Callee->use_empty() && Callee->hasLocalLinkage() &&
+      assert(Callee && "Expected to be non-null due to check at start of loop");
+      if (Callee->use_empty() && Callee->hasLocalLinkage() &&
           // TODO: Can remove if in SCC now.
           !SCCFunctions.count(Callee) &&
           // The function may be apparently dead, but if there are indirect
@@ -1192,13 +1194,13 @@ void ModuleInlinerWrapperPass::printPipeline(
   // on Params and Mode).
   if (!MPM.isEmpty()) {
     MPM.printPipeline(OS, MapClassName2PassName);
-    OS << ",";
+    OS << ',';
   }
   OS << "cgscc(";
   if (MaxDevirtIterations != 0)
     OS << "devirt<" << MaxDevirtIterations << ">(";
   PM.printPipeline(OS, MapClassName2PassName);
   if (MaxDevirtIterations != 0)
-    OS << ")";
-  OS << ")";
+    OS << ')';
+  OS << ')';
 }

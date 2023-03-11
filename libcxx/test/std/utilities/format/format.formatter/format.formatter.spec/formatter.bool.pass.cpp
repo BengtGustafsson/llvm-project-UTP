@@ -22,6 +22,7 @@
 #include <format>
 #include <cassert>
 #include <concepts>
+#include <iterator>
 #include <type_traits>
 
 #include "test_format_context.h"
@@ -44,7 +45,7 @@ void test(StringT expected, StringViewT fmt, bool arg) {
   auto out = std::back_inserter(result);
   using FormatCtxT = std::basic_format_context<decltype(out), CharT>;
 
-  std::basic_format_context format_ctx =
+  FormatCtxT format_ctx =
       test_format_context_create<decltype(out), CharT>(out, std::make_format_args<FormatCtxT>(arg));
   formatter.format(arg, format_ctx);
   assert(result == expected);

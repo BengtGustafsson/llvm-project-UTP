@@ -201,7 +201,7 @@ Language Selection and Mode Options
 
    Working draft for ISO C++ 2023 with GNU extensions
 
- The default C++ language standard is ``gnu++14``.
+ The default C++ language standard is ``gnu++17``.
 
  Supported values for the OpenCL language are:
 
@@ -370,6 +370,10 @@ number of cross compilers, or may only support a native target.
   target is specified, the system default target will be used.
 
 .. option:: -mcpu=?, -mtune=?
+
+  Acts as an alias for :option:`--print-supported-cpus`.
+
+.. option:: -mcpu=help, -mtune=help
 
   Acts as an alias for :option:`--print-supported-cpus`.
 

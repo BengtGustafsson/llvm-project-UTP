@@ -1,4 +1,4 @@
-# RUN: SUPPORT_LIB=%mlir_lib_dir/libmlir_c_runner_utils%shlibext \
+# RUN: env SUPPORT_LIB=%mlir_c_runner_utils \
 # RUN:   %PYTHON %s | FileCheck %s
 
 import ctypes
@@ -89,7 +89,7 @@ def main():
     for level in levels:
       for ordering in orderings:
         for bwidth in bitwidths:
-          attr = st.EncodingAttr.get(level, ordering, bwidth, bwidth)
+          attr = st.EncodingAttr.get(level, ordering, None, bwidth, bwidth)
           build_compile_and_run_output(attr, compiler)
           count = count + 1
 

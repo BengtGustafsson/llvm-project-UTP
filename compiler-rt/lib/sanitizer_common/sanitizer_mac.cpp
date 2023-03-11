@@ -989,7 +989,7 @@ static void VerifyInterceptorsWorking() {
   // "wrap_puts" within our own dylib.
   Dl_info info_puts, info_runtime;
   RAW_CHECK(dladdr(dlsym(RTLD_DEFAULT, "puts"), &info_puts));
-  RAW_CHECK(dladdr((void *)__sanitizer_report_error_summary, &info_runtime));
+  RAW_CHECK(dladdr((void *)&VerifyInterceptorsWorking, &info_runtime));
   if (internal_strcmp(info_puts.dli_fname, info_runtime.dli_fname) != 0) {
     Report(
         "ERROR: Interceptors are not working. This may be because %s is "
@@ -1039,7 +1039,7 @@ static void StripEnv() {
     return;
 
   Dl_info info;
-  RAW_CHECK(dladdr((void *)__sanitizer_report_error_summary, &info));
+  RAW_CHECK(dladdr((void *)&StripEnv, &info));
   const char *dylib_name = StripModuleName(info.dli_fname);
   bool lib_is_in_env = internal_strstr(dyld_insert_libraries, dylib_name);
   if (!lib_is_in_env)
@@ -1251,6 +1251,7 @@ uptr FindAvailableMemoryRange(uptr size, uptr alignment, uptr left_padding,
   mach_vm_address_t start_address =
     (SANITIZER_WORDSIZE == 32) ? 0x000000001000 : 0x000100000000;
 
+  const mach_vm_address_t max_vm_address = GetMaxVirtualAddress() + 1;
   mach_vm_address_t address = start_address;
   mach_vm_address_t free_begin = start_address;
   kern_return_t kr = KERN_SUCCESS;
@@ -1265,7 +1266,7 @@ uptr FindAvailableMemoryRange(uptr size, uptr alignment, uptr left_padding,
                                 (vm_region_info_t)&vminfo, &count);
     if (kr == KERN_INVALID_ADDRESS) {
       // No more regions beyond "address", consider the gap at the end of VM.
-      address = GetMaxVirtualAddress() + 1;
+      address = max_vm_address;
       vmsize = 0;
     } else {
       if (max_occupied_addr) *max_occupied_addr = address + vmsize;
@@ -1273,7 +1274,7 @@ uptr FindAvailableMemoryRange(uptr size, uptr alignment, uptr left_padding,
     if (free_begin != address) {
       // We found a free region [free_begin..address-1].
       uptr gap_start = RoundUpTo((uptr)free_begin + left_padding, alignment);
-      uptr gap_end = RoundDownTo((uptr)address, alignment);
+      uptr gap_end = RoundDownTo((uptr)Min(address, max_vm_address), alignment);
       uptr gap_size = gap_end > gap_start ? gap_end - gap_start : 0;
       if (size < gap_size) {
         return gap_start;

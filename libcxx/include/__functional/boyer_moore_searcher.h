@@ -25,7 +25,7 @@
 #include <unordered_map>
 #include <vector>
 
-#if _LIBCPP_STD_VER > 14
+#if _LIBCPP_STD_VER >= 17
 
 _LIBCPP_PUSH_MACROS
 #include <__undef_macros>
@@ -223,6 +223,7 @@ private:
     }
   }
 };
+_LIBCPP_CTAD_SUPPORTED_FOR_TYPE(boyer_moore_searcher);
 
 template <class _RandomAccessIterator1,
           class _Hash = hash<typename iterator_traits<_RandomAccessIterator1>::value_type>,
@@ -303,11 +304,12 @@ private:
     return std::make_pair(__l, __l);
   }
 };
+_LIBCPP_CTAD_SUPPORTED_FOR_TYPE(boyer_moore_horspool_searcher);
 
 _LIBCPP_END_NAMESPACE_STD
 
 _LIBCPP_POP_MACROS
 
-#endif // _LIBCPP_STD_VER > 14
+#endif // _LIBCPP_STD_VER >= 17
 
 #endif // _LIBCPP___FUNCTIONAL_BOYER_MOORE_SEARCHER_H

@@ -28,16 +28,17 @@ def testParsePrint():
 
 
 # CHECK-LABEL: TEST: testParseError
-# TODO: Hook the diagnostic manager to capture a more meaningful error
-# message.
 @run
 def testParseError():
   with Context():
     try:
       t = Attribute.parse("BAD_ATTR_DOES_NOT_EXIST")
-    except ValueError as e:
-      # CHECK: Unable to parse attribute: 'BAD_ATTR_DOES_NOT_EXIST'
-      print("testParseError:", e)
+    except MLIRError as e:
+      # CHECK: testParseError: <
+      # CHECK:   Unable to parse attribute:
+      # CHECK:   error: "BAD_ATTR_DOES_NOT_EXIST":1:1: expected attribute value
+      # CHECK: >
+      print(f"testParseError: <{e}>")
     else:
       print("Exception not produced")
 
@@ -180,8 +181,9 @@ def testFloatAttr():
     try:
       fattr_invalid = FloatAttr.get(
           IntegerType.get_signless(32), 42)
-    except ValueError as e:
-      # CHECK: invalid 'Type(i32)' and expected floating point type.
+    except MLIRError as e:
+      # CHECK: Invalid attribute:
+      # CHECK: error: unknown: expected floating point type
       print(e)
     else:
       print("Exception not produced")
@@ -542,3 +544,14 @@ def testStridedLayoutAttr():
     print(attr.strides[1])
     # CHECK: 13
     print(attr.strides[2])
+
+    attr = StridedLayoutAttr.get_fully_dynamic(3)
+    dynamic = ShapedType.get_dynamic_stride_or_offset()
+    # CHECK: strided<[?, ?, ?], offset: ?>
+    print(attr)
+    # CHECK: offset is dynamic: True
+    print(f"offset is dynamic: {attr.offset == dynamic}")
+    # CHECK: rank: 3
+    print(f"rank: {len(attr.strides)}")
+    # CHECK: strides are dynamic: [True, True, True]
+    print(f"strides are dynamic: {[s == dynamic for s in attr.strides]}")

@@ -2145,6 +2145,9 @@ TEST_F(FormatTestJS, NestedTemplateStrings) {
 
   // Crashed at some point.
   verifyFormat("}");
+  verifyFormat("`");
+  // FIXME: still crashing?
+  // verifyFormat("`\\");
 }
 
 TEST_F(FormatTestJS, TaggedTemplateStrings) {
@@ -2218,6 +2221,7 @@ TEST_F(FormatTestJS, OptionalTypes) {
                "  aaaaaaaaaaaaaaa?: boolean,\n"
                "  aaaaaa?: List<string>\n"
                "}) {}");
+  verifyFormat("type X = [y?];");
 }
 
 TEST_F(FormatTestJS, IndexSignature) {

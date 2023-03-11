@@ -28,6 +28,7 @@ def ControlFlow_Dialect : Dialect {
     constructs. These constructs generally represent control flow directly
     on SSA blocks of a control flow graph.
   }];
+
 }
 
 class CF_Op<string mnemonic, list<Trait> traits = []> :
@@ -64,7 +65,7 @@ def AssertOp : CF_Op<"assert"> {
 
 def BranchOp : CF_Op<"br", [
     DeclareOpInterfaceMethods<BranchOpInterface, ["getSuccessorForOperands"]>,
-    NoSideEffect, Terminator
+    Pure, Terminator
   ]> {
   let summary = "branch operation";
   let description = [{
@@ -113,7 +114,7 @@ def BranchOp : CF_Op<"br", [
 def CondBranchOp : CF_Op<"cond_br",
     [AttrSizedOperandSegments,
      DeclareOpInterfaceMethods<BranchOpInterface, ["getSuccessorForOperands"]>,
-     NoSideEffect, Terminator]> {
+     Pure, Terminator]> {
   let summary = "conditional branch operation";
   let description = [{
     The `cond_br` terminator operation represents a conditional branch on a
@@ -228,7 +229,7 @@ def CondBranchOp : CF_Op<"cond_br",
 def SwitchOp : CF_Op<"switch",
     [AttrSizedOperandSegments,
      DeclareOpInterfaceMethods<BranchOpInterface, ["getSuccessorForOperands"]>,
-     NoSideEffect, Terminator]> {
+     Pure, Terminator]> {
   let summary = "switch operation";
   let description = [{
     The `switch` terminator operation represents a switch on a signless integer
