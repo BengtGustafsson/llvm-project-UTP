@@ -59,20 +59,20 @@ For later versions of Visual Studio, no setup is required-->
     <DisplayString IncludeView="left">{*this,view(cpp)}</DisplayString>
     <DisplayString IncludeView="right"></DisplayString>
     <DisplayString IncludeView="poly">No visualizer yet for {(clang::Type::TypeClass)TypeBits.TC,en}Type</DisplayString> <!-- Not yet implemented Type subclass -->
-    <DisplayString IncludeView="Dependent" Condition="TypeBits.Dependent">Dependent{" ",sb}</DisplayString>
+    <DisplayString IncludeView="Dependent" Condition="TypeBits.Dependence &amp; clang::TypeDependenceScope::TypeDependence::Dependent">Dependent {" ",sb}</DisplayString>
     <DisplayString IncludeView="Dependent"></DisplayString>
-    <DisplayString IncludeView="InstantiationDependent" Condition="TypeBits.InstantiationDependent">InstantiationDependent{" ",sb}</DisplayString>
+    <DisplayString IncludeView="InstantiationDependent" Condition="TypeBits.Dependence &amp; clang::TypeDependenceScope::TypeDependence::Instantiation">InstantiationDependent{" ",sb}</DisplayString>
     <DisplayString IncludeView="InstantiationDependent"></DisplayString>
-    <DisplayString IncludeView="VariablyModified" Condition="TypeBits.VariablyModified">VariablyModified{" ",sb}</DisplayString>
+    <DisplayString IncludeView="VariablyModified" Condition="TypeBits.Dependence &amp; clang::TypeDependenceScope::TypeDependence::VariablyModified">VariablyModified{" ",sb}</DisplayString>
     <DisplayString IncludeView="VariablyModified"></DisplayString>
-    <DisplayString IncludeView="ContainsUnexpandedParameterPack" Condition="TypeBits.ContainsUnexpandedParameterPack">ContainsUnexpandedParameterPack{" ",sb}</DisplayString>
+    <DisplayString IncludeView="ContainsUnexpandedParameterPack" Condition="TypeBits.Dependence &amp; clang::TypeDependenceScope::TypeDependence::UnexpandedPack">ContainsUnexpandedParameterPack{" ",sb}</DisplayString>
     <DisplayString IncludeView="ContainsUnexpandedParameterPack"></DisplayString>
     <DisplayString IncludeView="Cache" Condition="TypeBits.CacheValid &amp;&amp; TypeBits.CachedLocalOrUnnamed">CachedLinkage: {(clang::Linkage)TypeBits.CachedLinkage,en} CachedLocalOrUnnamed</DisplayString>
     <DisplayString IncludeView="Cache" Condition="TypeBits.CacheValid &amp;&amp; !TypeBits.CachedLocalOrUnnamed">CachedLinkage: {(clang::Linkage)TypeBits.CachedLinkage,en}{" ",sb}</DisplayString>
     <DisplayString IncludeView="Cache"></DisplayString>
     <DisplayString IncludeView="FromAST" Condition="TypeBits.FromAST">FromAST</DisplayString>
     <DisplayString IncludeView="FromAST"></DisplayString>
-    <DisplayString IncludeView="flags" Condition="!TypeBits.Dependent &amp;&amp; !TypeBits.InstantiationDependent &amp;&amp; !TypeBits.VariablyModified  &amp;&amp; !TypeBits.ContainsUnexpandedParameterPack &amp;&amp; !TypeBits.CacheValid &amp;&amp; !TypeBits.FromAST">
+    <DisplayString IncludeView="flags" Condition="TypeBits.Dependence == 0 &amp;&amp; !TypeBits.CacheValid &amp;&amp; !TypeBits.FromAST">
       No TypeBits set beyond TypeClass
     </DisplayString>
     <DisplayString IncludeView="flags">
@@ -304,6 +304,7 @@ For later versions of Visual Studio, no setup is required-->
     </Expand>
   </Type>
   <Type Name="clang::TemplateName">
+	<DisplayString Condition="this->getKind() == clang::TemplateName::NameKind::Template">Template</DisplayString>
     <DisplayString IncludeView="cpp">{Storage,view(cpp)na}</DisplayString>
     <DisplayString>{Storage,na}</DisplayString>
     <Expand>
@@ -449,7 +450,7 @@ For later versions of Visual Studio, no setup is required-->
     <DisplayString IncludeView="right">{*((clang::ExtQualsTypeCommonBase *)(((uintptr_t)Value.Value) &amp; ~(uintptr_t)((1 &lt;&lt; 4) - 1)))-&gt;BaseType,view(right)}{*this,view(fastQuals)}</DisplayString>
     <!-- For the Fast Qualifiers, it is simpler (and probably more efficient) just to list all 8 cases than create
           views for each qualifier. TODO: Non-fast qualifiers -->
-    <DisplayString IncludeView="fastQuals" Condition="(Value.Value &amp; 15)==0"></DisplayString>
+    <DisplayString IncludeView="fastQuals" Condition="(Value.Value &amp; 15)==0">{" ",sb}non-const</DisplayString>
     <DisplayString IncludeView="fastQuals" Condition="(Value.Value &amp; 15)==1">{" ",sb}const</DisplayString>
     <DisplayString IncludeView="fastQuals" Condition="(Value.Value &amp; 15)==2">{" ",sb}restrict</DisplayString>
     <DisplayString IncludeView="fastQuals" Condition="(Value.Value &amp; 15)==3">{" ",sb}const restrict</DisplayString>
@@ -459,8 +460,8 @@ For later versions of Visual Studio, no setup is required-->
     <DisplayString IncludeView="fastQuals" Condition="(Value.Value &amp; 15)==7">{" ",sb}const volatile restrict</DisplayString>
     <DisplayString IncludeView="fastQuals">Cannot visualize non-fast qualifiers</DisplayString>
     <DisplayString Condition="(uintptr_t)Value.Value == 0">Null</DisplayString>
-    <DisplayString>{((clang::ExtQualsTypeCommonBase *)(((uintptr_t)Value.Value) &amp; ~(uintptr_t)((1 &lt;&lt; 4) - 1)))-&gt;BaseType,na}{*this,view(fastQuals)}</DisplayString>
-    <Expand>
+	<DisplayString>{((clang::ExtQualsTypeCommonBase *)(((uintptr_t)Value.Value) &amp; ~(uintptr_t)((1 &lt;&lt; 4) - 1)))-&gt;BaseType,na}{*this,view(fastQuals)}</DisplayString>
+	  <Expand>
       <Item Name="Fast Quals">*this,view(fastQuals)</Item>
       <ExpandedItem>((clang::ExtQualsTypeCommonBase *)(((uintptr_t)Value.Value) &amp; ~(uintptr_t)((1 &lt;&lt; 4) - 1)))-&gt;BaseType</ExpandedItem>
     </Expand>
@@ -496,30 +497,32 @@ For later versions of Visual Studio, no setup is required-->
     <DisplayString>{Argument}</DisplayString>
   </Type>
   <Type Name="clang::TemplateArgument">
-    <DisplayString IncludeView="cpp" Condition="Integer.Kind == clang::TemplateArgument::ArgKind::Type">{*(clang::QualType *)&amp;TypeOrValue.V,view(cpp)}</DisplayString>
-    <DisplayString Condition="Integer.Kind == clang::TemplateArgument::ArgKind::Type">{(clang::TemplateArgument::ArgKind)TypeOrValue.Kind,en} template argument: {*(clang::QualType *)&amp;TypeOrValue.V}</DisplayString>
-    <DisplayString IncludeView="arg0" Condition="Args.NumArgs==0"></DisplayString>
-    <DisplayString IncludeView="arg0">{Args.Args[0]}{*this,view(arg1)}</DisplayString>
-    <DisplayString IncludeView="arg1" Condition="Args.NumArgs==1"></DisplayString>
-    <DisplayString IncludeView="arg1">, {Args.Args[1]}{*this,view(arg2)}</DisplayString>
-    <DisplayString IncludeView="arg2" Condition="Args.NumArgs==2"></DisplayString>
-    <DisplayString IncludeView="arg2">, {Args.Args[2]}, ...</DisplayString>
-    <DisplayString IncludeView="arg0cpp" Condition="Args.NumArgs==0"></DisplayString>
-    <DisplayString IncludeView="arg0cpp">{Args.Args[0],view(cpp)}{*this,view(arg1cpp)}</DisplayString>
-    <DisplayString IncludeView="arg1cpp" Condition="Args.NumArgs==1"></DisplayString>
-    <DisplayString IncludeView="arg1cpp">, {Args.Args[1],view(cpp)}{*this,view(arg2cpp)}</DisplayString>
-    <DisplayString IncludeView="arg2cpp" Condition="Args.NumArgs==2"></DisplayString>
-    <DisplayString IncludeView="arg2cpp">, {Args.Args[2],view(cpp)}, ...</DisplayString>
-    <DisplayString IncludeView="cpp" Condition="Integer.Kind == clang::TemplateArgument::ArgKind::Pack">{*this,view(arg0cpp)}</DisplayString>
-    <DisplayString Condition="Integer.Kind == clang::TemplateArgument::ArgKind::Pack">{*this,view(arg0)}</DisplayString>
-    <DisplayString Condition="Integer.Kind == clang::TemplateArgument::ArgKind::Expression">{(clang::Expr *)TypeOrValue.V,view(cpp)na}</DisplayString>
-    <DisplayString>{(clang::TemplateArgument::ArgKind)TypeOrValue.Kind,en}</DisplayString>
+    <DisplayString IncludeView="cpp" Condition="Kind == clang::TemplateArgument::ArgKind::Type">Type</DisplayString>
+    <DisplayString Condition="Kind == clang::TemplateArgument::ArgKind::Type">{Kind,en} template argument: {TypeArg}</DisplayString>
+    <DisplayString IncludeView="arg0" Condition="PackArgs.NumArgs==0"></DisplayString>
+    <DisplayString IncludeView="arg0">{PackArgs.Args[0]}{*this,view(arg1)}</DisplayString>
+    <DisplayString IncludeView="arg1" Condition="PackArgs.NumArgs==1"></DisplayString>
+    <DisplayString IncludeView="arg1">, {PackArgs.Args[1]}{*this,view(arg2)}</DisplayString>
+    <DisplayString IncludeView="arg2" Condition="PackArgs.NumArgs==2"></DisplayString>
+    <DisplayString IncludeView="arg2">, {PackArgs.Args[2]}, ...</DisplayString>
+    <DisplayString IncludeView="arg0cpp" Condition="PackArgs.NumArgs==0"></DisplayString>
+    <DisplayString IncludeView="arg0cpp">{PackArgs.Args[0],view(cpp)}{*this,view(arg1cpp)}</DisplayString>
+    <DisplayString IncludeView="arg1cpp" Condition="PackArgs.NumArgs==1"></DisplayString>
+    <DisplayString IncludeView="arg1cpp">, {PackArgs.Args[1],view(cpp)}{*this,view(arg2cpp)}</DisplayString>
+    <DisplayString IncludeView="arg2cpp" Condition="PackArgs.NumArgs==2"></DisplayString>
+    <DisplayString IncludeView="arg2cpp">, {PackArgs.Args[2],view(cpp)}, ...</DisplayString>
+    <DisplayString IncludeView="cpp" Condition="Kind == clang::TemplateArgument::ArgKind::Pack">{*this,view(arg0cpp)}</DisplayString>
+    <DisplayString Condition="Kind == clang::TemplateArgument::ArgKind::Pack">{*this,view(arg0)}</DisplayString>
+    <DisplayString Condition="Kind == clang::TemplateArgument::ArgKind::Expression">Expr: {ExprArg,view(cpp)na}</DisplayString>
+	<DisplayString Condition="Kind == clang::TemplateArgument::ArgKind::Template">TemplateName</DisplayString>
+    <DisplayString>{(clang::TemplateArgument::ArgKind)Kind,en}</DisplayString>
     <Expand>
-      <Item Name="QualType" Condition="Integer.Kind == clang::TemplateArgument::ArgKind::Type">*(clang::QualType *)&amp;TypeOrValue.V</Item>
-      <Item Name="Expression" Condition="Integer.Kind == clang::TemplateArgument::ArgKind::Expression">(clang::Expr *)TypeOrValue.V</Item>
-      <ArrayItems Condition="Integer.Kind == clang::TemplateArgument::ArgKind::Pack">
-        <Size>Args.NumArgs</Size>
-        <ValuePointer>Args.Args</ValuePointer>
+      <Item Name="QualType" Condition="Kind == clang::TemplateArgument::ArgKind::Type">TypeArg</Item>
+      <Item Name="Expression" Condition="Kind == clang::TemplateArgument::ArgKind::Expression">ExprArg</Item>
+      <Item Name="Template" Condition="Kind == clang::TemplateArgument::ArgKind::Template">(clang::TemplateName *)&amp;TemplateArg.Name</Item>
+      <ArrayItems Condition="Kind == clang::TemplateArgument::ArgKind::Pack">
+        <Size>PackArgs.NumArgs</Size>
+        <ValuePointer>PackArgs.Args</ValuePointer>
       </ArrayItems>
       <!-- TODO: Other kinds-->
     </Expand>

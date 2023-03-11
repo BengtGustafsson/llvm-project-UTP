@@ -61,6 +61,7 @@ namespace pointer_union_detail {
     ValTy Val;
     PointerUnionMembers() = default;
     PointerUnionMembers(ValTy Val) : Val(Val) {}
+    explicit PointerUnionMembers(uintptr_t p) : Val((ValTy *)p) {}  // Used to enable natvis. explicit to avoid mistakenly calling it.
 
     friend struct PointerLikeTypeTraits<Derived>;
   };

@@ -162,21 +162,21 @@ static bool needsAmpersandOnTemplateArg(QualType paramType, QualType argType) {
 
 TemplateArgument::TemplateArgument(ASTContext &Ctx, const llvm::APSInt &Value,
                                    QualType Type) {
-  Integer.Kind = Integral;
-  // Copy the APSInt value into our decomposed form.
-  Integer.BitWidth = Value.getBitWidth();
-  Integer.IsUnsigned = Value.isUnsigned();
+ Kind = Integral;
+ // Copy the APSInt value into our decomposed form.
+ IntArg.BitWidth = Value.getBitWidth();
+ IntArg.IsUnsigned = Value.isUnsigned();
   // If the value is large, we have to get additional memory from the ASTContext
   unsigned NumWords = Value.getNumWords();
   if (NumWords > 1) {
     void *Mem = Ctx.Allocate(NumWords * sizeof(uint64_t));
     std::memcpy(Mem, Value.getRawData(), NumWords * sizeof(uint64_t));
-    Integer.pVal = static_cast<uint64_t *>(Mem);
+    IntArg.pVal = static_cast<uint64_t *>(Mem);
   } else {
-    Integer.VAL = Value.getZExtValue();
+    IntArg.VAL = Value.getZExtValue();
   }
 
-  Integer.Type = Type.getAsOpaquePtr();
+  TypeArg = Type;
 }
 
 TemplateArgument
@@ -267,7 +267,7 @@ bool TemplateArgument::isPackExpansion() const {
     return isa<PackExpansionExpr>(getAsExpr());
 
   case Universal:
-      return reinterpret_cast<UniversalTemplateParmDecl*>(TypeOrValue.V)->isParameterPack();
+      return UnivArg->isParameterPack();
   }
   llvm_unreachable("Invalid TemplateArgument Kind!");
 }
@@ -291,19 +291,16 @@ QualType TemplateArgument::getNonTypeTemplateArgumentType() const {
   case TemplateArgument::Template:
   case TemplateArgument::TemplateExpansion:
   case TemplateArgument::Pack:
+  case TemplateArgument::Universal:
     return QualType();
 
   case TemplateArgument::Integral:
-    return getIntegralType();
+  case TemplateArgument::Declaration:
+  case TemplateArgument::NullPtr:
+    return TypeArg;
 
   case TemplateArgument::Expression:
     return getAsExpr()->getType();
-
-  case TemplateArgument::Declaration:
-    return getParamTypeForDecl();
-
-  case TemplateArgument::NullPtr:
-    return getNullPtrType();
   }
 
   llvm_unreachable("Invalid TemplateArgument Kind!");
@@ -346,9 +343,9 @@ void TemplateArgument::Profile(llvm::FoldingSetNodeID &ID,
     break;
 
   case Pack:
-    ID.AddInteger(Args.NumArgs);
-    for (unsigned I = 0; I != Args.NumArgs; ++I)
-      Args.Args[I].Profile(ID, Context);
+    ID.AddInteger(PackArgs.NumArgs);
+    for (unsigned I = 0; I != PackArgs.NumArgs; ++I)
+      PackArgs.Args[I].Profile(ID, Context);
   }
 }
 
@@ -357,10 +354,14 @@ bool TemplateArgument::structurallyEquals(const TemplateArgument &Other) const {
 
   switch (getKind()) {
   case Null:
+    return true;
+
   case Type:
-  case Expression:
   case NullPtr:
-    return TypeOrValue.V == Other.TypeOrValue.V;
+    return TypeArg == Other.TypeArg;
+
+  case Expression:
+    return ExprArg == Other.ExprArg;
 
   case Template:
   case TemplateExpansion:
@@ -375,14 +376,14 @@ bool TemplateArgument::structurallyEquals(const TemplateArgument &Other) const {
            getAsIntegral() == Other.getAsIntegral();
 
   case Pack:
-    if (Args.NumArgs != Other.Args.NumArgs) return false;
-    for (unsigned I = 0, E = Args.NumArgs; I != E; ++I)
-      if (!Args.Args[I].structurallyEquals(Other.Args.Args[I]))
+    if (PackArgs.NumArgs != Other.PackArgs.NumArgs) return false;
+    for (unsigned I = 0, E = PackArgs.NumArgs; I != E; ++I)
+      if (!PackArgs.Args[I].structurallyEquals(Other.PackArgs.Args[I]))
         return false;
     return true;
 
     case Universal:
-        return true;        // Todo: Check if this is correct.
+      return UnivArg == Other.UnivArg;   // Unclear if pointer comparison is ok.
   }
 
   llvm_unreachable("Invalid TemplateArgument Kind!");
@@ -403,7 +404,7 @@ TemplateArgument TemplateArgument::getPackExpansionPattern() const {
 
   case Universal: {
     UniversalTemplateParmDecl* decl = getAsUniversal();
-    return TemplateArgument(decl);  // TODO: This is wrong. It is however unclear what the "pack expansion pattern" for a UTP Pack should be.
+    return TemplateArgument(decl->getPattern());  // TODO: This is wrong. It is however unclear what the "pack expansion pattern" for a UTP Pack should be.
   }
     
 
@@ -473,7 +474,7 @@ void TemplateArgument::print(const PrintingPolicy &Policy, raw_ostream &Out,
     getAsExpr()->printPretty(Out, nullptr, Policy);
     break;
 
-  case Pack:
+  case Pack: {
     Out << "<";
     bool First = true;
     for (const auto &P : pack_elements()) {
@@ -485,6 +486,11 @@ void TemplateArgument::print(const PrintingPolicy &Policy, raw_ostream &Out,
       P.print(Policy, Out, IncludeType);
     }
     Out << ">";
+    break;
+  }
+
+  case Universal:
+    getAsUniversal()->print(Out);
     break;
   }
 }

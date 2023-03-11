@@ -2310,43 +2310,34 @@ DeduceTemplateArguments(Sema &S, TemplateParameterList *TemplateParams,
 
     // Can't deduce anything, but that's okay.
     return Sema::TDK_Success;
-  case TemplateArgument::Universal:
-    // Must go through the different cases depending on A.getKind() here too.
-    // Note that there is no info for P so we use A.getAsType() / A.getAsTemoplate() / getDeducedParameterFromExpr(Info, A.getAsExpr()) instead.
-    // This could work as anything fits the UTP anyway.
-    switch (A.getKind()) {
-    case TemplateArgument::Type:
-      return DeduceTemplateArgumentsByTypeMatch(
-          S, TemplateParams, A.getAsType(), A.getAsType(), Info, Deduced, 0);
-    case TemplateArgument::Template:
-      return DeduceTemplateArguments(S, TemplateParams, A.getAsTemplate(),
-          A.getAsTemplate(), Info, Deduced);
-    case TemplateArgument::Declaration:
-      return DeduceNonTypeTemplateArgument(S, TemplateParams,
-          getDeducedParameterFromExpr(Info, A.getAsExpr()), A.getAsDecl(),
-          A.getParamTypeForDecl(), Info, Deduced);
-    case TemplateArgument::NullPtr:
-      return DeduceNullPtrTemplateArgument(S, TemplateParams,
-          getDeducedParameterFromExpr(Info, A.getAsExpr()),
-          A.getNullPtrType(), Info, Deduced);
-    case  TemplateArgument::Integral:
-      return DeduceNonTypeTemplateArgument(S, TemplateParams,
-          getDeducedParameterFromExpr(Info, A.getAsExpr()), A.getAsIntegral(),
-          A.getIntegralType(),/*ArrayBound=*/false, Info, Deduced);
-    case TemplateArgument::Expression:
-      return DeduceNonTypeTemplateArgument(S, TemplateParams,
-         getDeducedParameterFromExpr(Info, A.getAsExpr()),
-         A.getAsExpr(), Info, Deduced);
-    }
 
-    // Failed.
+case TemplateArgument::Universal: {
+  int I = P.getAsUniversal()->getIndex();
+  if (Deduced[I].isNull()) { // First use of UTP. Anything goes.
+    Deduced[I] = A;
+    return Sema::TDK_Success;
+  }
+
+  const DeducedTemplateArgument& D = Deduced[I];
+  if (checkDeducedTemplateArguments(S.Context, D, A).isNull()) {
     Info.FirstArg = P;
     Info.SecondArg = A;
-    return Sema::TDK_NonDeducedMismatch;
-
-  case TemplateArgument::Pack:
-    llvm_unreachable("Argument packs should be expanded by the caller!");
+    // Todo: Switch out and set the pointer union Info.Param according to P.kind.
+    // Info.Param = TemplateParams[I];
+    return Sema::TDK_Incomplete;
   }
+
+  return Sema::TDK_Success;
+  }
+
+  // Failed.
+  Info.FirstArg = P;
+  Info.SecondArg = A;
+  return Sema::TDK_NonDeducedMismatch;
+
+case TemplateArgument::Pack:
+  llvm_unreachable("Argument packs should be expanded by the caller!");
+}
 
   llvm_unreachable("Invalid TemplateArgument Kind!");
 }

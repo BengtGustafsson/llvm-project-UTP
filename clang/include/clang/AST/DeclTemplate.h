@@ -61,7 +61,7 @@ class VarTemplatePartialSpecializationDecl;
 /// Stores a template parameter of any kind.
 using TemplateParameter =
     llvm::PointerUnion<TemplateTypeParmDecl *, NonTypeTemplateParmDecl *,
-                       TemplateTemplateParmDecl *>;
+                       TemplateTemplateParmDecl *, UniversalTemplateParmDecl*>;
 
 NamedDecl *getAsNamedDecl(TemplateParameter P);
 
@@ -1801,15 +1801,7 @@ class UniversalTemplateParmDecl final : public NamedDecl,
     friend class Sema;
     friend class ASTDeclReader;
 
-    /// Whether this template template parameter is a template
-    /// parameter pack.
-    ///
-    /// \code
-    /// template<template <class T> ...MetaFunctions> struct Apply;
-    /// \endcode
-    bool ParameterPack : 1;
-
-    /// Whether this non-type template parameter is an "expanded"
+    /// Whether this universal template parameter is an "expanded"
     /// parameter pack, meaning that its type is a pack expansion and we
     /// already know the set of types that expansion expands to.
     bool ExpandedParameterPack : 1;
@@ -1819,18 +1811,20 @@ class UniversalTemplateParmDecl final : public NamedDecl,
 
     /// The default template argument, if any.
     using DefArgStorage =
-                         DefaultArgStorage<UniversalTemplateParmDecl, TypeSourceInfo *>;  // TODO: Allow three/four different things here. variant?
+                         DefaultArgStorage<UniversalTemplateParmDecl, TypeSourceInfo *>;  // TODO: Allow three/four different things here. std::variant?
     DefArgStorage DefaultArgument;
 
     UniversalTemplateParmDecl(DeclContext *DC,
                          SourceLocation IdLoc, IdentifierInfo *Id,
                          unsigned D, unsigned P,
-                         bool ParameterPack,
+                         UniversalTemplateParmDecl* Pattern,
                          Optional<unsigned> NumExpanded)
             : NamedDecl(UniversalTemplateParm, DC, IdLoc, Id), TemplateParmPosition(D, P),
-        ParameterPack(ParameterPack),
+        Pattern(Pattern),
         ExpandedParameterPack(NumExpanded),
         NumExpanded(NumExpanded ? *NumExpanded : 0) {}
+
+    UniversalTemplateParmDecl* Pattern;   // For packs we need something that represents one instance, but still retains the loc info and name. Created on demand.
 
 public:
     static UniversalTemplateParmDecl *Create(const ASTContext &C, DeclContext *DC,
@@ -1847,6 +1841,12 @@ public:
     using TemplateParmPosition::getPosition;
     using TemplateParmPosition::setPosition;
     using TemplateParmPosition::getIndex;
+
+    UniversalTemplateParmDecl *getPattern() { 
+      assert(isParameterPack());
+      return Pattern;
+    }
+
 
     const DefArgStorage &getDefaultArgStorage() const { return DefaultArgument; }
 
@@ -1891,7 +1891,7 @@ public:
     }
 
     /// Returns whether this is a parameter pack.
-    bool isParameterPack() const { return ParameterPack; }
+    bool isParameterPack() const { return Pattern != nullptr; }
 
     /// Whether this parameter is a template type parameter pack that has a known
     /// list of different type-constraints at different positions.

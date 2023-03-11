@@ -896,8 +896,12 @@ UniversalTemplateParmDecl::Create(const ASTContext& C, DeclContext* DC,
                                   IdentifierInfo* Id,
                                   bool ParameterPack,
                                   Optional<unsigned> NumExpanded) {
+  UniversalTemplateParmDecl *Pattern = nullptr;
+  if (ParameterPack)
+    Pattern = Create(C, DC, IdLoc, D, P, Id, false, NumExpanded);
+
     auto* TUPDecl =
-        new (C, DC) UniversalTemplateParmDecl(DC, IdLoc, Id, D, P, ParameterPack, NumExpanded);
+        new (C, DC) UniversalTemplateParmDecl(DC, IdLoc, Id, D, P, Pattern, NumExpanded);
     return TUPDecl;
 }
 
@@ -906,7 +910,7 @@ UniversalTemplateParmDecl::CreateDeserialized(const ASTContext& C, unsigned ID) 
     return new (C, ID) UniversalTemplateParmDecl(nullptr,
         SourceLocation(), nullptr,
         0, 0,
-        false,
+        nullptr,  // TODO: Check if we need to create a Pattern here, and if so how we can know whether to do it.
         None);
 }
 

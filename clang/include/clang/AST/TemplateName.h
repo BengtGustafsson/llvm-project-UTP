@@ -345,6 +345,11 @@ public:
     ID.AddPointer(Storage.getOpaqueValue());
   }
 
+
+  bool operator==(const TemplateName &rhs) const {
+    return Storage.getOpaqueValue() == rhs.Storage.getOpaqueValue();
+  }
+  
   /// Retrieve the template name as a void pointer.
   void *getAsVoidPointer() const { return Storage.getOpaqueValue(); }
 

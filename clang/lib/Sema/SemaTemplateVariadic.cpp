@@ -76,6 +76,12 @@ namespace {
       return true;
     }
 
+    bool VisitUniversalTemplateParmDecl(UniversalTemplateParmDecl *UTP) {
+      if (UTP->isParameterPack())
+        addUnexpanded(UTP);
+
+      return true;
+    }
     /// Record occurrences of template type parameter packs
     /// when we don't have proper source-location information for
     /// them.

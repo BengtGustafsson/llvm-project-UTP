@@ -183,11 +183,11 @@ For later versions of Visual Studio, no setup is required.
   </Type>
 
   <Type Name="llvm::StringMapEntry&lt;*&gt;">
-    <DisplayString Condition="StrLen == 0">empty</DisplayString>
-    <DisplayString Condition="StrLen != 0">({this+1,s}, {second})</DisplayString>
+    <DisplayString Condition="keyLength == 0">empty</DisplayString>
+    <DisplayString Condition="keyLength != 0">({this+1,s}, {second})</DisplayString>
     <Expand>
       <Item Name="[key]">this+1,s</Item>
-      <Item Name="[value]" Condition="StrLen != 0">second</Item>
+      <Item Name="[value]" Condition="keyLength != 0">second</Item>
     </Expand>
   </Type>
 
