@@ -242,9 +242,8 @@ static bool canUseSExt(ConstantInt *CI) {
 }
 
 static Decomposition
-decomposeGEP(GetElementPtrInst &GEP,
-             SmallVectorImpl<PreconditionTy> &Preconditions, bool IsSigned,
-             const DataLayout &DL) {
+decomposeGEP(GEPOperator &GEP, SmallVectorImpl<PreconditionTy> &Preconditions,
+             bool IsSigned, const DataLayout &DL) {
   // Do not reason about pointers where the index size is larger than 64 bits,
   // as the coefficients used to encode constraints are 64 bit integers.
   if (DL.getIndexTypeSizeInBits(GEP.getPointerOperand()->getType()) > 64)
@@ -264,7 +263,7 @@ decomposeGEP(GetElementPtrInst &GEP,
 
   // Handle the (gep (gep ....), C) case by incrementing the constant
   // coefficient of the inner GEP, if C is a constant.
-  auto *InnerGEP = dyn_cast<GetElementPtrInst>(GEP.getPointerOperand());
+  auto *InnerGEP = dyn_cast<GEPOperator>(GEP.getPointerOperand());
   if (VariableOffsets.empty() && InnerGEP && InnerGEP->getNumOperands() == 2) {
     auto Result = decompose(InnerGEP, Preconditions, IsSigned, DL);
     Result.add(ConstantOffset.getSExtValue());
@@ -336,7 +335,7 @@ static Decomposition decompose(Value *V,
     return int64_t(CI->getZExtValue());
   }
 
-  if (auto *GEP = dyn_cast<GetElementPtrInst>(V))
+  if (auto *GEP = dyn_cast<GEPOperator>(V))
     return decomposeGEP(*GEP, Preconditions, IsSigned, DL);
 
   Value *Op0;
@@ -515,8 +514,8 @@ ConstraintInfo::getConstraint(CmpInst::Predicate Pred, Value *Op0, Value *Op1,
 
   // Add extra constraints for variables that are known positive.
   for (auto &KV : KnownNonNegativeVariables) {
-    if (!KV.second || (Value2Index.find(KV.first) == Value2Index.end() &&
-                       NewIndexMap.find(KV.first) == NewIndexMap.end()))
+    if (!KV.second ||
+        (!Value2Index.contains(KV.first) && !NewIndexMap.contains(KV.first)))
       continue;
     SmallVector<int64_t, 8> C(Value2Index.size() + NewVariables.size() + 1, 0);
     C[GetOrAddIndex(KV.first)] = -1;
@@ -807,8 +806,8 @@ static void generateReproducer(CmpInst *Cond, Module *M,
         continue;
 
       auto *I = dyn_cast<Instruction>(V);
-      if (Value2Index.find(V) != Value2Index.end() || !I ||
-          !isa<CmpInst, BinaryOperator, GetElementPtrInst, CastInst>(V)) {
+      if (Value2Index.contains(V) || !I ||
+          !isa<CmpInst, BinaryOperator, GEPOperator, CastInst>(V)) {
         Old2New[V] = V;
         Args.push_back(V);
         LLVM_DEBUG(dbgs() << "  found external input " << *V << "\n");
@@ -857,7 +856,7 @@ static void generateReproducer(CmpInst *Cond, Module *M,
         continue;
 
       auto *I = dyn_cast<Instruction>(V);
-      if (Value2Index.find(V) == Value2Index.end() && I) {
+      if (!Value2Index.contains(V) && I) {
         Old2New[V] = nullptr;
         ToClone.push_back(I);
         append_range(WorkList, I->operands());

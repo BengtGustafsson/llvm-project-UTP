@@ -364,25 +364,20 @@ Pass *llvm::createLICMPass(unsigned LicmMssaOptCap,
                             LicmAllowSpeculation);
 }
 
-llvm::SinkAndHoistLICMFlags::SinkAndHoistLICMFlags(bool IsSink, Loop *L,
-                                                   MemorySSA *MSSA)
+llvm::SinkAndHoistLICMFlags::SinkAndHoistLICMFlags(bool IsSink, Loop &L,
+                                                   MemorySSA &MSSA)
     : SinkAndHoistLICMFlags(SetLicmMssaOptCap, SetLicmMssaNoAccForPromotionCap,
                             IsSink, L, MSSA) {}
 
 llvm::SinkAndHoistLICMFlags::SinkAndHoistLICMFlags(
     unsigned LicmMssaOptCap, unsigned LicmMssaNoAccForPromotionCap, bool IsSink,
-    Loop *L, MemorySSA *MSSA)
+    Loop &L, MemorySSA &MSSA)
     : LicmMssaOptCap(LicmMssaOptCap),
       LicmMssaNoAccForPromotionCap(LicmMssaNoAccForPromotionCap),
       IsSink(IsSink) {
-  assert(((L != nullptr) == (MSSA != nullptr)) &&
-         "Unexpected values for SinkAndHoistLICMFlags");
-  if (!MSSA)
-    return;
-
   unsigned AccessCapCount = 0;
-  for (auto *BB : L->getBlocks())
-    if (const auto *Accesses = MSSA->getBlockAccesses(BB))
+  for (auto *BB : L.getBlocks())
+    if (const auto *Accesses = MSSA.getBlockAccesses(BB))
       for (const auto &MA : *Accesses) {
         (void)MA;
         ++AccessCapCount;
@@ -432,7 +427,7 @@ bool LoopInvariantCodeMotion::runOnLoop(Loop *L, AAResults *AA, LoopInfo *LI,
 
   MemorySSAUpdater MSSAU(MSSA);
   SinkAndHoistLICMFlags Flags(LicmMssaOptCap, LicmMssaNoAccForPromotionCap,
-                              /*IsSink=*/true, L, MSSA);
+                              /*IsSink=*/true, *L, *MSSA);
 
   // Get the preheader block to move instructions into...
   BasicBlock *Preheader = L->getLoopPreheader();
@@ -1229,10 +1224,6 @@ bool llvm::canSinkOrHoistInst(Instruction &I, AAResults *AA, DominatorTree *DT,
       // Assumes don't actually alias anything or throw
       return true;
 
-    if (match(CI, m_Intrinsic<Intrinsic::experimental_widenable_condition>()))
-      // Widenable conditions don't actually alias anything or throw
-      return true;
-
     // Handle simple cases by querying alias analysis.
     MemoryEffects Behavior = AA->getMemoryEffects(CI);
     if (Behavior.doesNotAccessMemory())
@@ -1748,7 +1739,7 @@ static void hoist(Instruction &I, const DominatorTree *DT, const Loop *CurLoop,
       // time in isGuaranteedToExecute if we don't actually have anything to
       // drop.  It is a compile time optimization, not required for correctness.
       !SafetyInfo->isGuaranteedToExecute(I, DT, CurLoop))
-    I.dropUndefImplyingAttrsAndUnknownMetadata();
+    I.dropUBImplyingAttrsAndUnknownMetadata();
 
   if (isa<PHINode>(I))
     // Move the new node to the end of the phi list in the destination block.
@@ -2416,16 +2407,26 @@ bool pointerInvalidatedByBlock(BasicBlock &BB, MemorySSA &MSSA, MemoryUse &MU) {
 static bool hoistMinMax(Instruction &I, Loop &L, ICFLoopSafetyInfo &SafetyInfo,
                         MemorySSAUpdater &MSSAU) {
   bool Inverse = false;
+  bool IsLogical = false;
   using namespace PatternMatch;
   Value *Cond1, *Cond2;
   if (match(&I, m_Or(m_Value(Cond1), m_Value(Cond2))))
     Inverse = true;
-  else if (!match(&I, m_And(m_Value(Cond1), m_Value(Cond2))))
+  else if (match(&I, m_LogicalOr(m_Value(Cond1), m_Value(Cond2)))) {
+    Inverse = true;
+    IsLogical = true;
+  } else if (match(&I, m_And(m_Value(Cond1), m_Value(Cond2)))) {
+    // Do nothing
+  } else if (match(&I, m_LogicalAnd(m_Value(Cond1), m_Value(Cond2))))
+    IsLogical = true;
+  else
     return false;
 
   auto MatchICmpAgainstInvariant = [&](Value *C, ICmpInst::Predicate &P,
                                        Value *&LHS, Value *&RHS) {
     if (!match(C, m_OneUse(m_ICmp(P, m_Value(LHS), m_Value(RHS)))))
+      return false;
+    if (!LHS->getType()->isIntegerTy())
       return false;
     if (!ICmpInst::isRelational(P))
       return false;
@@ -2458,6 +2459,12 @@ static bool hoistMinMax(Instruction &I, Loop &L, ICFLoopSafetyInfo &SafetyInfo,
   auto *Preheader = L.getLoopPreheader();
   assert(Preheader && "Loop is not in simplify form?");
   IRBuilder<> Builder(Preheader->getTerminator());
+  // We are about to create a new guaranteed use for RHS2 which might not exist
+  // before (if it was a non-taken input of logical and/or instruction). If it
+  // was poison, we need to freeze it. Note that no new use for LHS and RHS1 are
+  // introduced, so they don't need this.
+  if (IsLogical)
+    RHS2 = Builder.CreateFreeze(RHS2, RHS2->getName() + ".fr");
   Value *NewRHS = Builder.CreateBinaryIntrinsic(
       id, RHS1, RHS2, nullptr, StringRef("invariant.") +
                                    (ICmpInst::isSigned(P1) ? "s" : "u") +

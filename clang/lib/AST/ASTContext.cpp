@@ -4049,6 +4049,10 @@ ASTContext::getBuiltinVectorTypeInfo(const BuiltinType *Ty) const {
     return SVE_INT_ELTTY(64, 2, false, 4);
   case BuiltinType::SveBool:
     return SVE_ELTTY(BoolTy, 16, 1);
+  case BuiltinType::SveBoolx2:
+    return SVE_ELTTY(BoolTy, 16, 2);
+  case BuiltinType::SveBoolx4:
+    return SVE_ELTTY(BoolTy, 16, 4);
   case BuiltinType::SveFloat16:
     return SVE_ELTTY(HalfTy, 8, 1);
   case BuiltinType::SveFloat16x2:
@@ -11969,7 +11973,7 @@ void ASTContext::forEachMultiversionedFunctionVersion(
        FD->getDeclContext()->getRedeclContext()->lookup(FD->getDeclName())) {
     FunctionDecl *CurFD = CurDecl->getAsFunction()->getMostRecentDecl();
     if (CurFD && hasSameType(CurFD->getType(), FD->getType()) &&
-        !llvm::is_contained(SeenDecls, CurFD)) {
+        !SeenDecls.contains(CurFD)) {
       SeenDecls.insert(CurFD);
       Pred(CurFD);
     }

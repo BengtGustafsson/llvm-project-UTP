@@ -1750,112 +1750,124 @@ Status CommandInterpreter::PreprocessCommand(std::string &command) {
 
     std::string expr_str(command, expr_content_start,
                          end_backtick - expr_content_start);
+    error = PreprocessToken(expr_str);
+    // We always stop at the first error:
+    if (error.Fail())
+      break;
 
-    ExecutionContext exe_ctx(GetExecutionContext());
+    command.erase(start_backtick, end_backtick - start_backtick + 1);
+    command.insert(start_backtick, std::string(expr_str));
+    pos = start_backtick + expr_str.size();
+  }
+  return error;                        
+}
 
-    // Get a dummy target to allow for calculator mode while processing
-    // backticks. This also helps break the infinite loop caused when target is
-    // null.
-    Target *exe_target = exe_ctx.GetTargetPtr();
-    Target &target = exe_target ? *exe_target : m_debugger.GetDummyTarget();
+Status
+CommandInterpreter::PreprocessToken(std::string &expr_str) {
+  Status error;
+  ExecutionContext exe_ctx(GetExecutionContext());
 
-    ValueObjectSP expr_result_valobj_sp;
+  // Get a dummy target to allow for calculator mode while processing
+  // backticks. This also helps break the infinite loop caused when target is
+  // null.
+  Target *exe_target = exe_ctx.GetTargetPtr();
+  Target &target = exe_target ? *exe_target : m_debugger.GetDummyTarget();
 
-    EvaluateExpressionOptions options;
-    options.SetCoerceToId(false);
-    options.SetUnwindOnError(true);
-    options.SetIgnoreBreakpoints(true);
-    options.SetKeepInMemory(false);
-    options.SetTryAllThreads(true);
-    options.SetTimeout(std::nullopt);
+  ValueObjectSP expr_result_valobj_sp;
 
-    ExpressionResults expr_result =
-        target.EvaluateExpression(expr_str.c_str(), exe_ctx.GetFramePtr(),
-                                  expr_result_valobj_sp, options);
+  EvaluateExpressionOptions options;
+  options.SetCoerceToId(false);
+  options.SetUnwindOnError(true);
+  options.SetIgnoreBreakpoints(true);
+  options.SetKeepInMemory(false);
+  options.SetTryAllThreads(true);
+  options.SetTimeout(std::nullopt);
 
-    if (expr_result == eExpressionCompleted) {
-      Scalar scalar;
-      if (expr_result_valobj_sp)
-        expr_result_valobj_sp =
-            expr_result_valobj_sp->GetQualifiedRepresentationIfAvailable(
-                expr_result_valobj_sp->GetDynamicValueType(), true);
-      if (expr_result_valobj_sp->ResolveValue(scalar)) {
-        command.erase(start_backtick, end_backtick - start_backtick + 1);
-        StreamString value_strm;
-        const bool show_type = false;
-        scalar.GetValue(&value_strm, show_type);
-        size_t value_string_size = value_strm.GetSize();
-        if (value_string_size) {
-          command.insert(start_backtick, std::string(value_strm.GetString()));
-          pos = start_backtick + value_string_size;
-          continue;
-        } else {
-          error.SetErrorStringWithFormat("expression value didn't result "
-                                         "in a scalar value for the "
-                                         "expression '%s'",
-                                         expr_str.c_str());
-          break;
-        }
+  ExpressionResults expr_result =
+      target.EvaluateExpression(expr_str.c_str(), exe_ctx.GetFramePtr(),
+                                expr_result_valobj_sp, options);
+
+  if (expr_result == eExpressionCompleted) {
+    Scalar scalar;
+    if (expr_result_valobj_sp)
+      expr_result_valobj_sp =
+          expr_result_valobj_sp->GetQualifiedRepresentationIfAvailable(
+              expr_result_valobj_sp->GetDynamicValueType(), true);
+    if (expr_result_valobj_sp->ResolveValue(scalar)) {
+      
+      StreamString value_strm;
+      const bool show_type = false;
+      scalar.GetValue(&value_strm, show_type);
+      size_t value_string_size = value_strm.GetSize();
+      if (value_string_size) {
+        expr_str = value_strm.GetData();
       } else {
         error.SetErrorStringWithFormat("expression value didn't result "
                                        "in a scalar value for the "
                                        "expression '%s'",
                                        expr_str.c_str());
-        break;
       }
-
-      continue;
+    } else {
+      error.SetErrorStringWithFormat("expression value didn't result "
+                                     "in a scalar value for the "
+                                     "expression '%s'",
+                                     expr_str.c_str());
     }
+    return error;
+  }
 
-    if (expr_result_valobj_sp)
-      error = expr_result_valobj_sp->GetError();
+  // If we have an error from the expression evaluation it will be in the
+  // ValueObject error, which won't be success and we will just report it.
+  // But if for some reason we didn't get a value object at all, then we will
+  // make up some helpful errors from the expression result.
+  if (expr_result_valobj_sp)
+    error = expr_result_valobj_sp->GetError();
 
-    if (error.Success()) {
-      switch (expr_result) {
-      case eExpressionSetupError:
-        error.SetErrorStringWithFormat(
-            "expression setup error for the expression '%s'", expr_str.c_str());
-        break;
-      case eExpressionParseError:
-        error.SetErrorStringWithFormat(
-            "expression parse error for the expression '%s'", expr_str.c_str());
-        break;
-      case eExpressionResultUnavailable:
-        error.SetErrorStringWithFormat(
-            "expression error fetching result for the expression '%s'",
-            expr_str.c_str());
-        break;
-      case eExpressionCompleted:
-        break;
-      case eExpressionDiscarded:
-        error.SetErrorStringWithFormat(
-            "expression discarded for the expression '%s'", expr_str.c_str());
-        break;
-      case eExpressionInterrupted:
-        error.SetErrorStringWithFormat(
-            "expression interrupted for the expression '%s'", expr_str.c_str());
-        break;
-      case eExpressionHitBreakpoint:
-        error.SetErrorStringWithFormat(
-            "expression hit breakpoint for the expression '%s'",
-            expr_str.c_str());
-        break;
-      case eExpressionTimedOut:
-        error.SetErrorStringWithFormat(
-            "expression timed out for the expression '%s'", expr_str.c_str());
-        break;
-      case eExpressionStoppedForDebug:
-        error.SetErrorStringWithFormat("expression stop at entry point "
-                                       "for debugging for the "
-                                       "expression '%s'",
-                                       expr_str.c_str());
-        break;
-      case eExpressionThreadVanished:
-        error.SetErrorStringWithFormat(
-            "expression thread vanished for the expression '%s'",
-            expr_str.c_str());
-        break;
-      }
+  if (error.Success()) {
+    switch (expr_result) {
+    case eExpressionSetupError:
+      error.SetErrorStringWithFormat(
+          "expression setup error for the expression '%s'", expr_str.c_str());
+      break;
+    case eExpressionParseError:
+      error.SetErrorStringWithFormat(
+          "expression parse error for the expression '%s'", expr_str.c_str());
+      break;
+    case eExpressionResultUnavailable:
+      error.SetErrorStringWithFormat(
+          "expression error fetching result for the expression '%s'",
+          expr_str.c_str());
+      break;
+    case eExpressionCompleted:
+      break;
+    case eExpressionDiscarded:
+      error.SetErrorStringWithFormat(
+          "expression discarded for the expression '%s'", expr_str.c_str());
+      break;
+    case eExpressionInterrupted:
+      error.SetErrorStringWithFormat(
+          "expression interrupted for the expression '%s'", expr_str.c_str());
+      break;
+    case eExpressionHitBreakpoint:
+      error.SetErrorStringWithFormat(
+          "expression hit breakpoint for the expression '%s'",
+          expr_str.c_str());
+      break;
+    case eExpressionTimedOut:
+      error.SetErrorStringWithFormat(
+          "expression timed out for the expression '%s'", expr_str.c_str());
+      break;
+    case eExpressionStoppedForDebug:
+      error.SetErrorStringWithFormat("expression stop at entry point "
+                                     "for debugging for the "
+                                     "expression '%s'",
+                                     expr_str.c_str());
+      break;
+    case eExpressionThreadVanished:
+      error.SetErrorStringWithFormat(
+          "expression thread vanished for the expression '%s'",
+          expr_str.c_str());
+      break;
     }
   }
   return error;
@@ -1886,8 +1898,8 @@ bool CommandInterpreter::HandleCommand(const char *command_line,
   LLDB_LOGF(log, "Processing command: %s", command_line);
   LLDB_SCOPED_TIMERF("Processing command: %s.", command_line);
 
-  if (WasInterrupted()) {
-    result.AppendError("interrupted");
+  if (GetDebugger().InterruptRequested()) {
+    result.AppendError("... Interrupted");
     return false;
   }
 
@@ -2555,7 +2567,7 @@ void CommandInterpreter::HandleCommands(const StringList &commands,
     m_debugger.SetAsyncExecution(false);
   }
 
-  for (size_t idx = 0; idx < num_lines && !WasInterrupted(); idx++) {
+  for (size_t idx = 0; idx < num_lines; idx++) {
     const char *cmd = commands.GetStringAtIndex(idx);
     if (cmd[0] == '\0')
       continue;
@@ -3035,6 +3047,9 @@ bool CommandInterpreter::InterruptCommand() {
 }
 
 bool CommandInterpreter::WasInterrupted() const {
+  if (!m_debugger.IsIOHandlerThreadCurrentThread())
+    return false;
+
   bool was_interrupted =
       (m_command_state == CommandHandlingState::eInterrupted);
   lldbassert(!was_interrupted || m_iohandler_nesting_level > 0);
@@ -3048,7 +3063,8 @@ void CommandInterpreter::PrintCommandOutput(IOHandler &io_handler,
   lldb::StreamFileSP stream = is_stdout ? io_handler.GetOutputStreamFileSP()
                                         : io_handler.GetErrorStreamFileSP();
   // Split the output into lines and poll for interrupt requests
-  while (!str.empty() && !WasInterrupted()) {
+  bool had_output = !str.empty();
+  while (!str.empty()) {
     llvm::StringRef line;
     std::tie(line, str) = str.split('\n');
     {
@@ -3059,7 +3075,7 @@ void CommandInterpreter::PrintCommandOutput(IOHandler &io_handler,
   }
 
   std::lock_guard<std::recursive_mutex> guard(io_handler.GetOutputMutex());
-  if (!str.empty())
+  if (had_output && GetDebugger().InterruptRequested())
     stream->Printf("\n... Interrupted.\n");
   stream->Flush();
 }
@@ -3372,7 +3388,13 @@ CommandInterpreterRunResult CommandInterpreter::RunCommandInterpreter(
   if (options.GetSpawnThread()) {
     m_debugger.StartIOHandlerThread();
   } else {
+    // If the current thread is not managed by a host thread, we won't detect
+    // that this IS the CommandInterpreter IOHandler thread, so make it so:
+    HostThread new_io_handler_thread(Host::GetCurrentThread());
+    HostThread old_io_handler_thread 
+        = m_debugger.SetIOHandlerThread(new_io_handler_thread);
     m_debugger.RunIOHandlers();
+    m_debugger.SetIOHandlerThread(old_io_handler_thread);
 
     if (options.GetAutoHandleEvents())
       m_debugger.StopEventHandlerThread();

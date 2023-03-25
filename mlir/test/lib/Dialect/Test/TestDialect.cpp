@@ -19,6 +19,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/ExtensibleDialect.h"
+#include "mlir/IR/FunctionImplementation.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/PatternMatch.h"
@@ -354,6 +355,24 @@ struct TestInlinerInterface : public DialectInlinerInterface {
     return builder.create<TestCastOp>(conversionLoc, resultType, input);
   }
 
+  Value handleArgument(OpBuilder &builder, Operation *call, Operation *callable,
+                       Value argument, Type targetType,
+                       DictionaryAttr argumentAttrs) const final {
+    if (!argumentAttrs.contains("test.handle_argument"))
+      return argument;
+    return builder.create<TestTypeChangerOp>(call->getLoc(), targetType,
+                                             argument);
+  }
+
+  Value handleResult(OpBuilder &builder, Operation *call, Operation *callable,
+                     Value result, Type targetType,
+                     DictionaryAttr resultAttrs) const final {
+    if (!resultAttrs.contains("test.handle_result"))
+      return result;
+    return builder.create<TestTypeChangerOp>(call->getLoc(), targetType,
+                                             result);
+  }
+
   void processInlinedCallBlocks(
       Operation *call,
       iterator_range<Region::iterator> inlinedBlocks) const final {
@@ -648,6 +667,29 @@ LogicalResult TestCallOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
     return emitOpError() << "'" << fnAttr.getValue()
                          << "' does not reference a valid function";
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ConversionFuncOp
+//===----------------------------------------------------------------------===//
+
+ParseResult ConversionFuncOp::parse(OpAsmParser &parser,
+                                    OperationState &result) {
+  auto buildFuncType =
+      [](Builder &builder, ArrayRef<Type> argTypes, ArrayRef<Type> results,
+         function_interface_impl::VariadicFlag,
+         std::string &) { return builder.getFunctionType(argTypes, results); };
+
+  return function_interface_impl::parseFunctionOp(
+      parser, result, /*allowVariadic=*/false,
+      getFunctionTypeAttrName(result.name), buildFuncType,
+      getArgAttrsAttrName(result.name), getResAttrsAttrName(result.name));
+}
+
+void ConversionFuncOp::print(OpAsmPrinter &p) {
+  function_interface_impl::printFunctionOp(
+      p, *this, /*isVariadic=*/false, getFunctionTypeAttrName(),
+      getArgAttrsAttrName(), getResAttrsAttrName());
 }
 
 //===----------------------------------------------------------------------===//
@@ -1118,10 +1160,10 @@ void PrettyPrintedRegionOp::print(OpAsmPrinter &p) {
   // Assuming that region has a single non-terminator inner-op, if the inner-op
   // meets some criteria (which in this case is a simple one  based on the name
   // of inner-op), then we can print the entire region in a succinct way.
-  // Here we assume that the prototype of "special.op" can be trivially derived
+  // Here we assume that the prototype of "test.special.op" can be trivially derived
   // while parsing it back.
-  if (innerOp.getName().getStringRef().equals("special.op")) {
-    p << " start special.op end";
+  if (innerOp.getName().getStringRef().equals("test.special.op")) {
+    p << " start test.special.op end";
   } else {
     p << " (";
     p.printRegion(getRegion());

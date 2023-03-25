@@ -259,6 +259,10 @@ TEST_P(ImportExpr, ImportSourceLocExpr) {
              Lang_CXX03, Verifier,
              functionDecl(hasDescendant(
                  sourceLocExpr(hasBuiltinStr("__builtin_FILE")))));
+  testImport("void declToImport() { (void)__builtin_FILE_NAME(); }", Lang_CXX03,
+             "", Lang_CXX03, Verifier,
+             functionDecl(hasDescendant(
+                 sourceLocExpr(hasBuiltinStr("__builtin_FILE_NAME")))));
   testImport("void declToImport() { (void)__builtin_COLUMN(); }", Lang_CXX03,
              "", Lang_CXX03, Verifier,
              functionDecl(hasDescendant(
@@ -8472,6 +8476,29 @@ TEST_P(ASTImporterOptionSpecificTestBase, VaListCpp) {
 
   ASSERT_TRUE(ToAST->getASTContext().hasSameType(
       ToVaList->getUnderlyingType(), ToBuiltinVaList->getUnderlyingType()));
+}
+
+TEST_P(ASTImporterOptionSpecificTestBase,
+       ImportDefinitionOfEmptyClassWithNoUniqueAddressField) {
+  Decl *FromTU = getTuDecl(
+      R"(
+      struct B {};
+      struct A { B b; };
+      )",
+      Lang_CXX20);
+
+  CXXRecordDecl *FromD = FirstDeclMatcher<CXXRecordDecl>().match(
+      FromTU, cxxRecordDecl(hasName("A")));
+
+  for (auto *FD : FromD->fields())
+    FD->addAttr(clang::NoUniqueAddressAttr::Create(FromD->getASTContext(),
+                                                   clang::SourceRange()));
+  FromD->markEmpty();
+
+  CXXRecordDecl *ToD = Import(FromD, Lang_CXX20);
+  EXPECT_TRUE(ToD->isEmpty());
+  for (auto *FD : ToD->fields())
+    EXPECT_EQ(true, FD->hasAttr<NoUniqueAddressAttr>());
 }
 
 INSTANTIATE_TEST_SUITE_P(ParameterizedTests, ASTImporterLookupTableTest,

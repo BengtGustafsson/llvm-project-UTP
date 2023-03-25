@@ -48,6 +48,9 @@ Improvements and New Features
 - ``std::string_view`` now provides iterators that check for out-of-bounds accesses when the safe
   libc++ mode is enabled.
 
+- The performance of ``dynamic_cast`` on its hot paths is greatly improved and is as efficient as the
+  ``libsupc++`` implementation. Note that the performance improvements are shipped in ``libcxxabi``.
+
 Deprecations and Removals
 -------------------------
 
@@ -59,7 +62,8 @@ Deprecations and Removals
   includes are removed based on the language version used. Incidental transitive
   inclusions of the following headers have been removed:
 
-  - C++2b: ``atomic``, ``bit``, ``cstring``, ``type_traits``
+  - C++2b: ``atomic``, ``bit``, ``cstdint``, ``cstdlib``, ``cstring``, ``initializer_list``, ``new``, ``stdexcept``,
+           ``type_traits``, ``typeinfo``
 
 - The headers ``<experimental/algorithm>`` and ``<experimental/functional>`` have been removed, since all the contents
   have been implemented in namespace ``std`` for at least two releases.
@@ -69,6 +73,15 @@ Deprecations and Removals
   is no backwards compatibility option. This specialization has been removed
   from the Standard since it was never used, the proper specialization to use
   instead is ``template<size_t N> struct formatter<charT[N], charT>``.
+
+- Libc++ used to provide some C++11 tag type global variables in C++03 as an extension, which are removed in
+  this release. Those variables were ``std::allocator_arg``, ``std::defer_lock``, ``std::try_to_lock``,
+  ``std::adopt_lock``, and ``std::piecewise_construct``. Note that the types associated to those variables are
+  still provided in C++03 as an extension (e.g. ``std::piecewise_construct_t``). Providing those variables in
+  C++03 mode made it impossible to define them properly -- C++11 mandated that they be ``constexpr`` variables,
+  which is impossible in C++03 mode. Furthermore, C++17 mandated that they be ``inline constexpr`` variables,
+  which led to ODR violations when mixed with the C++03 definition. Cleaning this up is required for libc++ to
+  make progress on support for C++20 modules.
 
 Upcoming Deprecations and Removals
 ----------------------------------

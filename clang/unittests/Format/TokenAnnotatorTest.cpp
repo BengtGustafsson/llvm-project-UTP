@@ -242,6 +242,17 @@ TEST_F(TokenAnnotatorTest, UnderstandsUsesOfStarAndAmp) {
                     "}");
   ASSERT_EQ(Tokens.size(), 12u) << Tokens;
   EXPECT_TOKEN(Tokens[7], tok::amp, TT_BinaryOperator);
+
+  Tokens =
+      annotate("template <typename T> void swap() noexcept(Bar<T> && Foo<T>);");
+  ASSERT_EQ(Tokens.size(), 23u) << Tokens;
+  EXPECT_TOKEN(Tokens[15], tok::ampamp, TT_BinaryOperator);
+
+  Tokens = annotate("template <typename T> struct S {\n"
+                    "  explicit(Bar<T> && Foo<T>) S(const S &);\n"
+                    "};");
+  ASSERT_EQ(Tokens.size(), 30u) << Tokens;
+  EXPECT_TOKEN(Tokens[14], tok::ampamp, TT_BinaryOperator);
 }
 
 TEST_F(TokenAnnotatorTest, UnderstandsUsesOfPlusAndMinus) {
@@ -744,10 +755,15 @@ TEST_F(TokenAnnotatorTest, UnderstandsRequiresClausesAndConcepts) {
                     "void S::bar() const & requires Baz<T> { }");
   ASSERT_EQ(Tokens.size(), 85u) << Tokens;
   EXPECT_TOKEN(Tokens[13], tok::kw_requires, TT_RequiresClause);
+  EXPECT_TOKEN(Tokens[24], tok::amp, TT_PointerOrReference);
   EXPECT_TOKEN(Tokens[25], tok::kw_requires, TT_RequiresClause);
+  EXPECT_TOKEN(Tokens[35], tok::ampamp, TT_PointerOrReference);
   EXPECT_TOKEN(Tokens[36], tok::kw_requires, TT_RequiresClause);
+  EXPECT_TOKEN(Tokens[47], tok::amp, TT_PointerOrReference);
   EXPECT_TOKEN(Tokens[49], tok::kw_requires, TT_RequiresClause);
+  EXPECT_TOKEN(Tokens[59], tok::ampamp, TT_PointerOrReference);
   EXPECT_TOKEN(Tokens[61], tok::kw_requires, TT_RequiresClause);
+  EXPECT_TOKEN(Tokens[76], tok::amp, TT_PointerOrReference);
   EXPECT_TOKEN(Tokens[77], tok::kw_requires, TT_RequiresClause);
 
   Tokens = annotate("void Class::member() && requires(Constant) {}");

@@ -97,6 +97,23 @@ TEST_F(FormatTestVerilog, Align) {
                Style);
 }
 
+TEST_F(FormatTestVerilog, Assign) {
+  verifyFormat("assign mynet = enable;");
+  verifyFormat("assign (strong1, pull0) #1 mynet = enable;");
+  verifyFormat("assign #1 mynet = enable;");
+  verifyFormat("assign mynet = enable;");
+  // Test that assignments are on separate lines.
+  verifyFormat("assign mynet = enable,\n"
+               "       mynet1 = enable1;");
+  // Test that `<=` and `,` don't confuse it.
+  verifyFormat("assign mynet = enable1 <= enable2;");
+  verifyFormat("assign mynet = enable1 <= enable2,\n"
+               "       mynet1 = enable3;");
+  verifyFormat("assign mynet = enable,\n"
+               "       mynet1 = enable2 <= enable3;");
+  verifyFormat("assign mynet = enable(enable1, enable2);");
+}
+
 TEST_F(FormatTestVerilog, BasedLiteral) {
   verifyFormat("x = '0;");
   verifyFormat("x = '1;");
@@ -250,6 +267,45 @@ TEST_F(FormatTestVerilog, Case) {
                "  end\n"
                "endcase",
                Style);
+  // Other colons should not be mistaken as case colons.
+  Style = getLLVMStyle(FormatStyle::LK_Verilog);
+  Style.BitFieldColonSpacing = FormatStyle::BFCS_None;
+  verifyFormat("case (x[1:0])\n"
+               "endcase",
+               Style);
+  verifyFormat("default:\n"
+               "  x[1:0] = x[1:0];",
+               Style);
+  Style.BitFieldColonSpacing = FormatStyle::BFCS_Both;
+  verifyFormat("case (x[1 : 0])\n"
+               "endcase",
+               Style);
+  verifyFormat("default:\n"
+               "  x[1 : 0] = x[1 : 0];",
+               Style);
+  Style = getLLVMStyle(FormatStyle::LK_Verilog);
+  Style.SpacesInContainerLiterals = true;
+  verifyFormat("case ('{x : x, default : 9})\n"
+               "endcase",
+               Style);
+  verifyFormat("x = '{x : x, default : 9};\n", Style);
+  verifyFormat("default:\n"
+               "  x = '{x : x, default : 9};\n",
+               Style);
+  Style.SpacesInContainerLiterals = false;
+  verifyFormat("case ('{x: x, default: 9})\n"
+               "endcase",
+               Style);
+  verifyFormat("x = '{x: x, default: 9};\n", Style);
+  verifyFormat("default:\n"
+               "  x = '{x: x, default: 9};\n",
+               Style);
+}
+
+TEST_F(FormatTestVerilog, Coverage) {
+  verifyFormat("covergroup x\n"
+               "    @@(begin x);\n"
+               "endgroup");
 }
 
 TEST_F(FormatTestVerilog, Declaration) {
@@ -618,6 +674,14 @@ TEST_F(FormatTestVerilog, Operators) {
   verifyFormat("x = ++x;");
   verifyFormat("x = --x;");
 
+  // Test that `*` and `*>` are binary.
+  verifyFormat("x = x * x;");
+  verifyFormat("x = (x * x);");
+  verifyFormat("(opcode *> o1) = 6.1;");
+  verifyFormat("(C, D *> Q) = 18;");
+  // The wildcard import is not a binary operator.
+  verifyFormat("import p::*;");
+
   // Test that operators don't get split.
   verifyFormat("x = x++;");
   verifyFormat("x = x--;");
@@ -658,6 +722,13 @@ TEST_F(FormatTestVerilog, Operators) {
   EXPECT_EQ("x = x < -x;", format("x=x<-x;"));
   EXPECT_EQ("x = x << -x;", format("x=x<<-x;"));
   EXPECT_EQ("x = x <<< -x;", format("x=x<<<-x;"));
+
+  // Test that operators that are C++ identifiers get treated as operators.
+  verifyFormat("solve s before d;");                       // before
+  verifyFormat("binsof(i) intersect {0};");                // intersect
+  verifyFormat("req dist {1};");                           // dist
+  verifyFormat("a inside {b, c};");                        // inside
+  verifyFormat("bus.randomize() with { atype == low; };"); // with
 }
 
 TEST_F(FormatTestVerilog, Preprocessor) {
@@ -808,6 +879,71 @@ TEST_F(FormatTestVerilog, Primitive) {
                "    (?\?) ? : ? : -;\n"
                "  endtable\n"
                "endprimitive");
+}
+
+TEST_F(FormatTestVerilog, Streaming) {
+  verifyFormat("x = {>>{j}};");
+  verifyFormat("x = {>>byte{j}};");
+  verifyFormat("x = {<<{j}};");
+  verifyFormat("x = {<<byte{j}};");
+  verifyFormat("x = {<<16{j}};");
+  verifyFormat("x = {<<{8'b0011_0101}};");
+  verifyFormat("x = {<<4{6'b11_0101}};");
+  verifyFormat("x = {>>4{6'b11_0101}};");
+  verifyFormat("x = {<<2{{<<{4'b1101}}}};");
+  verifyFormat("bit [96 : 1] y = {>>{a, b, c}};");
+  verifyFormat("int j = {>>{a, b, c}};");
+  verifyFormat("{>>{a, b, c}} = 23'b1;");
+  verifyFormat("{>>{a, b, c}} = x;");
+  verifyFormat("{>>{j}} = x;");
+  verifyFormat("{>>byte{j}} = x;");
+  verifyFormat("{<<{j}} = x;");
+  verifyFormat("{<<byte{j}} = x;");
+}
+
+TEST_F(FormatTestVerilog, StructuredProcedure) {
+  // Blocks should be indented correctly.
+  verifyFormat("initial begin\n"
+               "end");
+  verifyFormat("initial begin\n"
+               "  x <= x;\n"
+               "  x <= x;\n"
+               "end");
+  verifyFormat("initial\n"
+               "  x <= x;\n"
+               "x <= x;");
+  verifyFormat("always @(x) begin\n"
+               "end");
+  verifyFormat("always @(x) begin\n"
+               "  x <= x;\n"
+               "  x <= x;\n"
+               "end");
+  verifyFormat("always @(x)\n"
+               "  x <= x;\n"
+               "x <= x;");
+  // Various keywords.
+  verifyFormat("always @(x)\n"
+               "  x <= x;");
+  verifyFormat("always @(posedge x)\n"
+               "  x <= x;");
+  verifyFormat("always\n"
+               "  x <= x;");
+  verifyFormat("always @*\n"
+               "  x <= x;");
+  verifyFormat("always @(*)\n"
+               "  x <= x;");
+  verifyFormat("always_comb\n"
+               "  x <= x;");
+  verifyFormat("always_latch @(x)\n"
+               "  x <= x;");
+  verifyFormat("always_ff @(posedge x)\n"
+               "  x <= x;");
+  verifyFormat("initial\n"
+               "  x <= x;");
+  verifyFormat("final\n"
+               "  x <= x;");
+  verifyFormat("forever\n"
+               "  x <= x;");
 }
 } // namespace format
 } // end namespace clang

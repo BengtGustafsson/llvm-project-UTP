@@ -36,7 +36,6 @@
 #include "CodeGenTarget.h"
 #include "InfoByHwMode.h"
 #include "SubtargetFeatureInfo.h"
-#include "TableGenBackends.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Support/CodeGenCoverage.h"
 #include "llvm/Support/CommandLine.h"
@@ -3369,7 +3368,7 @@ unsigned RuleMatcher::getInsnVarID(InstructionMatcher &InsnMatcher) const {
 }
 
 void RuleMatcher::defineOperand(StringRef SymbolicName, OperandMatcher &OM) {
-  if (DefinedOperands.find(SymbolicName) == DefinedOperands.end()) {
+  if (!DefinedOperands.contains(SymbolicName)) {
     DefinedOperands[SymbolicName] = &OM;
     return;
   }
@@ -3383,7 +3382,7 @@ void RuleMatcher::defineOperand(StringRef SymbolicName, OperandMatcher &OM) {
 }
 
 void RuleMatcher::definePhysRegOperand(Record *Reg, OperandMatcher &OM) {
-  if (PhysRegOperands.find(Reg) == PhysRegOperands.end()) {
+  if (!PhysRegOperands.contains(Reg)) {
     PhysRegOperands[Reg] = &OM;
     return;
   }
@@ -6363,8 +6362,5 @@ unsigned OperandMatcher::getInsnVarID() const { return Insn.getInsnVarID(); }
 
 //===----------------------------------------------------------------------===//
 
-namespace llvm {
-void EmitGlobalISel(RecordKeeper &RK, raw_ostream &OS) {
-  GlobalISelEmitter(RK).run(OS);
-}
-} // namespace llvm
+static TableGen::Emitter::OptClass<GlobalISelEmitter>
+    X("gen-global-isel", "Generate GlobalISel selector");

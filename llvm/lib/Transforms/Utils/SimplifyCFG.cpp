@@ -1125,7 +1125,7 @@ static void CloneInstructionsIntoPredecessorBlockAndUpdateSSAUses(
     // it is tied to the instruction itself, not the value or position.
     // Similarly strip attributes on call parameters that may cause UB in
     // location the call is moved to.
-    NewBonusInst->dropUndefImplyingAttrsAndUnknownMetadata(
+    NewBonusInst->dropUBImplyingAttrsAndUnknownMetadata(
         LLVMContext::MD_annotation);
 
     NewBonusInst->insertInto(PredBlock, PTI->getIterator());
@@ -2444,9 +2444,13 @@ bool CompatibleSets::shouldBelongToSameSet(ArrayRef<InvokeInst *> Invokes) {
 
   // Can we theoretically form the data operands for the merged `invoke`?
   auto IsIllegalToMergeArguments = [](auto Ops) {
-    Type *Ty = std::get<0>(Ops)->getType();
-    assert(Ty == std::get<1>(Ops)->getType() && "Incompatible types?");
-    return Ty->isTokenTy() && std::get<0>(Ops) != std::get<1>(Ops);
+    Use &U0 = std::get<0>(Ops);
+    Use &U1 = std::get<1>(Ops);
+    if (U0 == U1)
+      return false;
+    return U0->getType()->isTokenTy() ||
+           !canReplaceOperandWithVariable(cast<Instruction>(U0.getUser()),
+                                          U0.getOperandNo());
   };
   assert(Invokes.size() == 2 && "Always called with exactly two candidates.");
   if (any_of(zip(Invokes[0]->data_ops(), Invokes[1]->data_ops()),
@@ -3021,7 +3025,7 @@ bool SimplifyCFGOpt::SpeculativelyExecuteBB(BranchInst *BI, BasicBlock *ThenBB,
       if (!isa<DbgAssignIntrinsic>(&I))
         I.setDebugLoc(DebugLoc());
     }
-    I.dropUndefImplyingAttrsAndUnknownMetadata();
+    I.dropUBImplyingAttrsAndUnknownMetadata();
 
     // Drop ephemeral values.
     if (EphTracker.contains(&I)) {
@@ -7110,33 +7114,10 @@ static bool passingValueIsAlwaysUndefined(Value *V, Instruction *I, bool PtrValu
     // Look through GEPs. A load from a GEP derived from NULL is still undefined
     if (GetElementPtrInst *GEP = dyn_cast<GetElementPtrInst>(Use))
       if (GEP->getPointerOperand() == I) {
-        // The current base address is null, there are four cases to consider:
-        // getelementptr (TY, null, 0)                 -> null
-        // getelementptr (TY, null, not zero)          -> may be modified
-        // getelementptr inbounds (TY, null, 0)        -> null
-        // getelementptr inbounds (TY, null, not zero) -> poison iff null is
-        // undefined?
-        if (!GEP->hasAllZeroIndices() &&
-            (!GEP->isInBounds() ||
-             NullPointerIsDefined(GEP->getFunction(),
-                                  GEP->getPointerAddressSpace())))
+        if (!GEP->isInBounds() || !GEP->hasAllZeroIndices())
           PtrValueMayBeModified = true;
         return passingValueIsAlwaysUndefined(V, GEP, PtrValueMayBeModified);
       }
-
-    // Look through return.
-    if (ReturnInst *Ret = dyn_cast<ReturnInst>(Use)) {
-      bool HasNoUndefAttr =
-          Ret->getFunction()->hasRetAttribute(Attribute::NoUndef);
-      // Return undefined to a noundef return value is undefined.
-      if (isa<UndefValue>(C) && HasNoUndefAttr)
-        return true;
-      // Return null to a nonnull+noundef return value is undefined.
-      if (C->isNullValue() && HasNoUndefAttr &&
-          Ret->getFunction()->hasRetAttribute(Attribute::NonNull)) {
-        return !PtrValueMayBeModified;
-      }
-    }
 
     // Look through bitcasts.
     if (BitCastInst *BC = dyn_cast<BitCastInst>(Use))

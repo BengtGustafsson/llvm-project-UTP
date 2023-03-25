@@ -351,9 +351,7 @@ public:
   /// error.
   void dump() const;
 
-  void Profile(llvm::FoldingSetNodeID &ID) {
-    ID.AddPointer(Storage.getOpaqueValue());
-  }
+  void Profile(llvm::FoldingSetNodeID &ID);
 
 
   bool operator==(const TemplateName &rhs) const {

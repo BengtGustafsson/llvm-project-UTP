@@ -244,7 +244,7 @@ bool lowertypetests::isJumpTableCanonical(Function *F) {
     return false;
   auto *CI = mdconst::extract_or_null<ConstantInt>(
       F->getParent()->getModuleFlag("CFI Canonical Jump Tables"));
-  if (!CI || CI->getZExtValue() != 0)
+  if (!CI || !CI->isZero())
     return true;
   return F->hasFnAttribute("cfi-canonical-jump-table");
 }
@@ -1242,7 +1242,7 @@ void LowerTypeTestsModule::createJumpTableEntry(
     bool Endbr = false;
     if (const auto *MD = mdconst::extract_or_null<ConstantInt>(
           Dest->getParent()->getModuleFlag("cf-protection-branch")))
-      Endbr = MD->getZExtValue() != 0;
+      Endbr = !MD->isZero();
     if (Endbr)
       AsmOS << (JumpTableArch == Triple::x86 ? "endbr32\n" : "endbr64\n");
     AsmOS << "jmp ${" << ArgIndex << ":c}@plt\n";
@@ -1370,15 +1370,25 @@ void LowerTypeTestsModule::replaceWeakDeclarationWithJumpTablePtr(
   replaceCfiUses(F, PlaceholderFn, IsJumpTableCanonical);
 
   convertUsersOfConstantsToInstructions(PlaceholderFn);
-  for (Use &U : make_early_inc_range(PlaceholderFn->uses())) {
-    auto *I = dyn_cast<Instruction>(U.getUser());
-    assert(I && "Non-instruction users should have been eliminated");
-    IRBuilder Builder(I);
+  // Don't use range based loop, because use list will be modified.
+  while (!PlaceholderFn->use_empty()) {
+    Use &U = *PlaceholderFn->use_begin();
+    auto *InsertPt = dyn_cast<Instruction>(U.getUser());
+    assert(InsertPt && "Non-instruction users should have been eliminated");
+    auto *PN = dyn_cast<PHINode>(InsertPt);
+    if (PN)
+      InsertPt = PN->getIncomingBlock(U)->getTerminator();
+    IRBuilder Builder(InsertPt);
     Value *ICmp = Builder.CreateICmp(CmpInst::ICMP_NE, F,
                                      Constant::getNullValue(F->getType()));
     Value *Select = Builder.CreateSelect(ICmp, JT,
                                          Constant::getNullValue(F->getType()));
-    U.set(Select);
+    // For phi nodes, we need to update the incoming value for all operands
+    // with the same predecessor.
+    if (PN)
+      PN->setIncomingValueForBlock(InsertPt->getParent(), Select);
+    else
+      U.set(Select);
   }
   PlaceholderFn->eraseFromParent();
 }
