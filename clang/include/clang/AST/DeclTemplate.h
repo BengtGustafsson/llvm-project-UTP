@@ -31,6 +31,7 @@
 #include "llvm/ADT/PointerIntPair.h"
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/ADT/iterator.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Compiler.h"
@@ -1812,7 +1813,7 @@ class UniversalTemplateParmDecl final : public NamedDecl,
                          SourceLocation IdLoc, IdentifierInfo *Id,
                          unsigned D, unsigned P,
                          UniversalTemplateParmDecl* Pattern,
-                         Optional<unsigned> NumExpanded)
+                         llvm::Optional<unsigned> NumExpanded)
             : NamedDecl(UniversalTemplateParm, DC, IdLoc, Id), TemplateParmPosition(D, P),
         Pattern(Pattern),
         ExpandedParameterPack(NumExpanded),
@@ -1826,7 +1827,7 @@ public:
                                         unsigned D, unsigned P,
                                         IdentifierInfo *Id,
                                         bool ParameterPack,
-                                        Optional<unsigned> NumExpanded = None);
+         llvm::Optional<unsigned> NumExpanded = std::nullopt);
     static UniversalTemplateParmDecl *CreateDeserialized(const ASTContext &C,
         unsigned ID);
 

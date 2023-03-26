@@ -107,14 +107,9 @@ private:
   /// The kind of template argument we're storing.
 
   struct DA {
-    unsigned Kind : 31;
-    unsigned IsDefaulted : 1;
-    void *QT;
     ValueDecl *D;
   };
   struct I {
-    unsigned Kind : 31;
-    unsigned IsDefaulted : 1;
     // We store a decomposed APSInt with the data allocated by ASTContext if
     // BitWidth > 64. The memory may be shared between multiple
     // TemplateArgument instances.
@@ -127,44 +122,39 @@ private:
       /// Used to store the >64 bits integer value.
       const uint64_t *pVal;
     };
-    void *Type;
   };
   struct A {
-    unsigned Kind : 31;
-    unsigned IsDefaulted : 1;
     unsigned NumArgs;
     const TemplateArgument *Args;
   };
   struct TA {
-    unsigned Kind : 31;
-    unsigned IsDefaulted : 1;
     unsigned NumExpansions;
-    void *Name;
+    TemplateName Name;
   };
-  struct TV {
-    unsigned Kind : 31;
-    unsigned IsDefaulted : 1;
-    uintptr_t V;
-  };
+
+  ArgKind Kind : 31;
+  unsigned IsDefaulted : 1;
+  QualType ArgType;
+
   union {
     struct DA DeclArg;
-    struct I Integer;
-    struct A Args;
+    struct I IntArg;
+    struct A PackArgs;
     struct TA TemplateArg;
-    struct TV TypeOrValue;
+    Expr* ExprArg;
     UniversalTemplateParmDecl* UnivArg;     // Universal
   };
 
 public:
   /// Construct an empty, invalid template argument.
-  constexpr TemplateArgument() : TypeOrValue({Null, 0, /* IsDefaulted */ 0}) {}
+  constexpr TemplateArgument() : Kind(Null), IsDefaulted(0), ExprArg(nullptr) {}
 
   /// Construct a template type argument.
   TemplateArgument(QualType T, bool isNullPtr = false,
                    bool IsDefaulted = false) {
-    TypeOrValue.Kind = isNullPtr ? NullPtr : Type;
-    TypeOrValue.IsDefaulted = IsDefaulted;
-    TypeOrValue.V = reinterpret_cast<uintptr_t>(T.getAsOpaquePtr());
+    Kind = isNullPtr ? NullPtr : Type;
+    IsDefaulted = IsDefaulted;
+    ArgType = T;
   }
 
   /// Construct a template argument that refers to a
@@ -172,9 +162,9 @@ public:
   /// template declaration.
   TemplateArgument(ValueDecl *D, QualType QT, bool IsDefaulted = false) {
     assert(D && "Expected decl");
-    DeclArg.Kind = Declaration;
-    DeclArg.IsDefaulted = IsDefaulted;
-    DeclArg.QT = QT.getAsOpaquePtr();
+    Kind = Declaration;
+    IsDefaulted = IsDefaulted;
+    ArgType = QT;
     DeclArg.D = D;
   }
 
@@ -185,9 +175,9 @@ public:
 
   /// Construct an integral constant template argument with the same
   /// value as Other but a different type.
-  TemplateArgument(const TemplateArgument &Other, QualType Type) {
-    Integer = Other.Integer;
-    Integer.Type = Type.getAsOpaquePtr();
+  TemplateArgument(const TemplateArgument &Other, QualType T) {
+    IntArg = Other.IntArg;
+    ArgType = T;
   }
 
   /// Construct a template argument that is a template.
@@ -202,9 +192,9 @@ public:
   /// \param IsDefaulted If 'true', implies that this TemplateArgument
   /// corresponds to a default template parameter
   TemplateArgument(TemplateName Name, bool IsDefaulted = false) {
-    TemplateArg.Kind = Template;
-    TemplateArg.IsDefaulted = IsDefaulted;
-    TemplateArg.Name = Name.getAsVoidPointer();
+    Kind = Template;
+    IsDefaulted = IsDefaulted;
+    TemplateArg.Name = Name;
     TemplateArg.NumExpansions = 0;
   }
 
@@ -224,9 +214,9 @@ public:
   /// corresponds to a default template parameter
   TemplateArgument(TemplateName Name, std::optional<unsigned> NumExpansions,
                    bool IsDefaulted = false) {
-    TemplateArg.Kind = TemplateExpansion;
-    TemplateArg.IsDefaulted = IsDefaulted;
-    TemplateArg.Name = Name.getAsVoidPointer();
+    Kind = TemplateExpansion;
+    IsDefaulted = IsDefaulted;
+    TemplateArg.Name = Name;
     if (NumExpansions)
       TemplateArg.NumExpansions = *NumExpansions + 1;
     else
@@ -239,9 +229,9 @@ public:
   /// lists used for dependent types and for expression; it will not
   /// occur in a non-dependent, canonical template argument list.
   TemplateArgument(Expr *E, bool IsDefaulted = false) {
-    TypeOrValue.Kind = Expression;
-    TypeOrValue.IsDefaulted = IsDefaulted;
-    TypeOrValue.V = reinterpret_cast<uintptr_t>(E);
+    Kind = Expression;
+    IsDefaulted = IsDefaulted;
+    ExprArg = E;
   }
 
 
@@ -255,10 +245,10 @@ public:
   /// We assume that storage for the template arguments provided
   /// outlives the TemplateArgument itself.
   explicit TemplateArgument(ArrayRef<TemplateArgument> Args) {
-    this->Args.Kind = Pack;
-    this->Args.IsDefaulted = false;
-    this->Args.Args = Args.data();
-    this->Args.NumArgs = Args.size();
+    Kind = Pack;
+    IsDefaulted = false;
+    PackArgs.Args = Args.data();
+    PackArgs.NumArgs = Args.size();
   }
 
   static TemplateArgument getEmptyPack() {
@@ -271,7 +261,7 @@ public:
                                          ArrayRef<TemplateArgument> Args);
 
   /// Return the kind of stored template argument.
-  ArgKind getKind() const { return (ArgKind)TypeOrValue.Kind; }
+  ArgKind getKind() const { return Kind; }
 
   /// Determine whether this template argument has no value.
   bool isNull() const { return getKind() == Null; }
@@ -297,7 +287,7 @@ public:
   /// Retrieve the type for a type template argument.
   QualType getAsType() const {
     assert(getKind() == Type && "Unexpected kind");
-    return QualType::getFromOpaquePtr(reinterpret_cast<void*>(TypeOrValue.V));
+    return ArgType;
   }
 
   /// Retrieve the declaration for a declaration non-type
@@ -309,19 +299,19 @@ public:
 
   QualType getParamTypeForDecl() const {
     assert(getKind() == Declaration && "Unexpected kind");
-    return QualType::getFromOpaquePtr(DeclArg.QT);
+    return ArgType;
   }
 
   /// Retrieve the type for null non-type template argument.
   QualType getNullPtrType() const {
     assert(getKind() == NullPtr && "Unexpected kind");
-    return QualType::getFromOpaquePtr(reinterpret_cast<void*>(TypeOrValue.V));
+    return ArgType;
   }
 
   /// Retrieve the template name for a template name argument.
   TemplateName getAsTemplate() const {
     assert(getKind() == Template && "Unexpected kind");
-    return TemplateName::getFromVoidPointer(TemplateArg.Name);
+    return TemplateArg.Name;
   }
 
   /// Retrieve the template argument as a template name; if the argument
@@ -330,7 +320,7 @@ public:
     assert((getKind() == Template || getKind() == TemplateExpansion) &&
            "Unexpected kind");
 
-    return TemplateName::getFromVoidPointer(TemplateArg.Name);
+    return TemplateArg.Name;
   }
 
   UniversalTemplateParmDecl* getAsUniversal() const {
@@ -348,32 +338,32 @@ public:
 
     using namespace llvm;
 
-    if (Integer.BitWidth <= 64)
-      return APSInt(APInt(Integer.BitWidth, Integer.VAL), Integer.IsUnsigned);
+    if (IntArg.BitWidth <= 64)
+      return APSInt(APInt(IntArg.BitWidth, IntArg.VAL), IntArg.IsUnsigned);
 
-    unsigned NumWords = APInt::getNumWords(Integer.BitWidth);
-    return APSInt(APInt(Integer.BitWidth, ArrayRef(Integer.pVal, NumWords)),
-                  Integer.IsUnsigned);
+    unsigned NumWords = APInt::getNumWords(IntArg.BitWidth);
+    return APSInt(APInt(IntArg.BitWidth, ArrayRef(IntArg.pVal, NumWords)),
+                  IntArg.IsUnsigned);
   }
 
   /// Retrieve the type of the integral value.
   QualType getIntegralType() const {
     assert(getKind() == Integral && "Unexpected kind");
-    return QualType::getFromOpaquePtr(Integer.Type);
+    return ArgType;
   }
 
   void setIntegralType(QualType T) {
     assert(getKind() == Integral && "Unexpected kind");
-    Integer.Type = T.getAsOpaquePtr();
+    ArgType = T;
   }
 
   /// Set to 'true' if this TemplateArgument corresponds to a
   /// default template parameter.
-  void setIsDefaulted(bool v) { TypeOrValue.IsDefaulted = v; }
+  void setIsDefaulted(bool v) { IsDefaulted = v; }
 
   /// If returns 'true', this TemplateArgument corresponds to a
   /// default template parameter.
-  bool getIsDefaulted() const { return (bool)TypeOrValue.IsDefaulted; }
+  bool getIsDefaulted() const { return (bool)IsDefaulted; }
 
   /// If this is a non-type template argument, get its type. Otherwise,
   /// returns a null QualType.
@@ -382,7 +372,7 @@ public:
   /// Retrieve the template argument as an expression.
   Expr *getAsExpr() const {
     assert(getKind() == Expression && "Unexpected kind");
-    return reinterpret_cast<Expr *>(TypeOrValue.V);
+    return ExprArg;
   }
 
   /// Iterator that traverses the elements of a template argument pack.
@@ -392,14 +382,14 @@ public:
   /// pack.
   pack_iterator pack_begin() const {
     assert(getKind() == Pack);
-    return Args.Args;
+    return PackArgs.Args;
   }
 
   /// Iterator referencing one past the last argument of a template
   /// argument pack.
   pack_iterator pack_end() const {
     assert(getKind() == Pack);
-    return Args.Args + Args.NumArgs;
+    return PackArgs.Args + PackArgs.NumArgs;
   }
 
   /// Iterator range referencing all of the elements of a template
@@ -412,13 +402,13 @@ public:
   /// pack.
   unsigned pack_size() const {
     assert(getKind() == Pack);
-    return Args.NumArgs;
+    return PackArgs.NumArgs;
   }
 
   /// Return the array of arguments in this template argument pack.
   ArrayRef<TemplateArgument> getPackAsArray() const {
     assert(getKind() == Pack);
-    return llvm::ArrayRef(Args.Args, Args.NumArgs);
+    return llvm::ArrayRef(PackArgs.Args, PackArgs.NumArgs);
   }
 
   /// Determines whether two template arguments are superficially the

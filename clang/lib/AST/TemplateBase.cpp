@@ -162,11 +162,11 @@ static bool needsAmpersandOnTemplateArg(QualType paramType, QualType argType) {
 
 TemplateArgument::TemplateArgument(ASTContext &Ctx, const llvm::APSInt &Value,
                                    QualType Type, bool IsDefaulted) {
-  Integer.Kind = Integral;
-  Integer.IsDefaulted = IsDefaulted;
+  Kind = Integral;
+  IsDefaulted = IsDefaulted;
   // Copy the APSInt value into our decomposed form.
-  Integer.BitWidth = Value.getBitWidth();
-  Integer.IsUnsigned = Value.isUnsigned();
+  IntArg.BitWidth = Value.getBitWidth();
+  IntArg.IsUnsigned = Value.isUnsigned();
   // If the value is large, we have to get additional memory from the ASTContext
   unsigned NumWords = Value.getNumWords();
   if (NumWords > 1) {
@@ -177,7 +177,7 @@ TemplateArgument::TemplateArgument(ASTContext &Ctx, const llvm::APSInt &Value,
     IntArg.VAL = Value.getZExtValue();
   }
 
-  TypeArg = Type;
+  ArgType = Type;
 }
 
 TemplateArgument
@@ -298,7 +298,7 @@ QualType TemplateArgument::getNonTypeTemplateArgumentType() const {
   case TemplateArgument::Integral:
   case TemplateArgument::Declaration:
   case TemplateArgument::NullPtr:
-    return TypeArg;
+    return ArgType;
 
   case TemplateArgument::Expression:
     return getAsExpr()->getType();
@@ -347,6 +347,14 @@ void TemplateArgument::Profile(llvm::FoldingSetNodeID &ID,
     ID.AddInteger(PackArgs.NumArgs);
     for (unsigned I = 0; I != PackArgs.NumArgs; ++I)
       PackArgs.Args[I].Profile(ID, Context);
+    break;
+
+  case Universal:
+    ID.AddPointer(this);  // TODO: Make a function.
+    break;
+
+default:
+    llvm_unreachable("Invalid TemplateArgument Kind!");
   }
 }
 
@@ -359,7 +367,7 @@ bool TemplateArgument::structurallyEquals(const TemplateArgument &Other) const {
 
   case Type:
   case NullPtr:
-    return TypeArg == Other.TypeArg;
+    return ArgType == Other.ArgType;
 
   case Expression:
     return ExprArg == Other.ExprArg;

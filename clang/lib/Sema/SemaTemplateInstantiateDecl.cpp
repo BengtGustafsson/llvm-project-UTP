@@ -2880,7 +2880,7 @@ Decl *TemplateDeclInstantiator::VisitTemplateTypeParmDecl(
 // TODO: Can this really happen, or should we never get here?
 Decl *TemplateDeclInstantiator::VisitUniversalTemplateParmDecl(
     UniversalTemplateParmDecl *D) {
-    Optional<unsigned> NumExpanded;
+    llvm::Optional<unsigned> NumExpanded;
 
     UniversalTemplateParmDecl *Inst = UniversalTemplateParmDecl::Create(
         SemaRef.Context, Owner, D->getLocation(),

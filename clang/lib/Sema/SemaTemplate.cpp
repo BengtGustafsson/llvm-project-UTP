@@ -4072,7 +4072,8 @@ QualType Sema::CheckTemplateIdType(TemplateName Name,
 
         // If this isn't a record, keep looking.
         CXXRecordDecl *Record = dyn_cast<CXXRecordDecl>(Ctx);
-        if (!Record) continue;
+        if (!Record)
+          continue;
 
         // Look for one of the two cases with InjectedClassNameTypes
         // and check whether it's the same template.
@@ -5285,7 +5286,8 @@ bool Sema::CheckTemplateTypeArgument(
   // Check template type parameter.
   switch(Arg.getKind()) {
   case TemplateArgument::Universal:    // Name of universal template parameter used as argument where a type is expected. This is checked later at instantiation.
-      Converted.push_back(Arg);
+      SugaredConverted.push_back(Arg);
+      CanonicalConverted.push_back(Arg);
       return false;
 
   case TemplateArgument::Type:
@@ -5691,11 +5693,11 @@ bool Sema::CheckTemplateArgument(
             QualType T = Context.getAutoDeductType();
             auto NTTP = NonTypeTemplateParmDecl::Create(UTP->getASTContext(), UTP->getDeclContext(), UTP->getSourceRange().getBegin(), UTP->getSourceRange().getBegin(), UTP->getDepth(), UTP->getPosition(), UTP->getIdentifier(), T, false, nullptr);  // Does this leak or is ASKContext an arena allocator?
             QualType NTTPType = NTTP->getType();
-            TemplateArgument Result;
+            TemplateArgument Result, CanonicalResult;
             unsigned CurSFINAEErrors = NumSFINAEErrors;
             ExprResult Res =
                 CheckTemplateArgument(NTTP, NTTPType, Arg.getArgument().getAsExpr(),
-                    Result, CTAK);
+                    Result, CanonicalResult, CTAK);
             if (Res.isInvalid())
                 return true;
             // If the current template argument causes an error, give up now.
@@ -5709,10 +5711,12 @@ bool Sema::CheckTemplateArgument(
                 Arg = TemplateArgumentLoc(TA, Res.get());
             }
 
-            Converted.push_back(Result);
+            SugaredConverted.push_back(Result);
+            CanonicalConverted.push_back(CanonicalResult);
+        } else {
+          SugaredConverted.push_back(Arg.getArgument());
+          CanonicalConverted.push_back(Arg.getArgument());
         }
-        else
-            Converted.push_back(Arg.getArgument());
 
         return false;
     }
