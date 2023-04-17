@@ -1579,7 +1579,7 @@ private:
     template <class T> friend class TypePropertyCache;
 
     /// TypeClass bitfield - Enum that specifies what subclass this belongs to.
-    unsigned TC : 8;
+    TypeClass TC : 8;
 
     /// Store information on the type dependency.
     unsigned Dependence : llvm::BitWidth<TypeDependence>;
