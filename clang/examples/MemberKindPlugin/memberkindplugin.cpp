@@ -20,25 +20,121 @@ using namespace clang;
 
 namespace {
 
-class MemberKindConsumer : public ASTConsumer {
+// This class maintains a list of scsanned header and cpp files. For the moment files are only added if they contain a declaration
+// that the AST visitor gets. To reduce the size of the compiledfiles.txt file it is first read in and only _new_ files are added
+// and then appended to the file at the end of the run. This allows reasonable uniqueness even for parallel compilations although
+// in that case some overlap may result, which has to be fitered after the build(s) complete.
+// Note that if builds in disparate directory trees are invcluded there may still be duplicated filenames if there are multiple
+// copies on disk.
+// Each line consists of the normalized filename followed by lie count and byte count. Just before closing after writing out the
+// new file info a sum row is written containing:
+// Sum so far: <TUs> <Files> <Lines> <Bytes>
+class FileList {
 public:
-    MemberKindConsumer(CompilerInstance& instance) : m_instance(instance) {
-        m_fileList.open("/home/bengtg/CompiledFiles.txt", std::ios::app);
+    FileList(const std::string& fileListName) : m_fileListName(fileListName) {
+        // Load file.
+        std::ifstream file(fileListName);
+        std::string line;
+        while (file) {
+            getline(file, line);
+            if (line.substr(0, 10) == "Sum so far")
+                m_tus++;
+            else {
+                size_t pos = line.find(',');
+                if (pos == std::string::npos)
+                    continue;   // Bad line
+                std::string filename = line.substr(0, pos);
+                auto iter = m_files.find(filename);
+                if (iter != m_files.end())
+                    continue;   // Repeated file
+
+                // Parse rest of line to get lines and bytes for this file
+                size_t pos2 = line.find(',', pos + 1);
+                if (pos2 == std::string::npos)
+                    continue;
+                auto lineStr = line.substr(pos + 1, pos2 - pos);
+                auto lines = stoi(lineStr);
+
+                size_t pos3 = line.find(',', pos2 + 1);
+                if (pos3 == std::string::npos)
+                    continue;
+                auto bytesStr = line.substr(pos2 + 1, pos3 - pos2);
+                auto bytes = stoi(bytesStr);
+
+                m_lines += lines;
+                m_bytes += bytes;
+                m_files[filename] = false;
+            }
+        }
+
+        m_lastFile = m_files.end();
     }
 
+    ~FileList() {
+        // Write the New files for this compilation and the sum line.
+        std::ofstream file(m_fileListName, std::ios::app);
+
+        for (auto& elem : m_files) {
+            if (elem.second) {
+                // New file. Open and count its lines and bytes.
+                size_t bytes = 0;
+                size_t lines = 0;
+                std::ifstream ff(elem.first);
+                std::string line;
+                while (ff) {
+                    getline(ff, line);
+                    lines++;
+                    bytes += line.size();
+                }
+                file << elem.first.c_str() << ", " << lines << ", " << bytes << std::endl;     // Flush to ensure append
+
+                m_lines += lines;
+                m_bytes += bytes;
+            }
+        }
+
+        file << "Sum so far: " << m_tus << " TUs. " << m_files.size() << " Files. " << m_lines << " Lines. " << m_bytes << " Bytes." << std::endl;
+    }
+
+    void add(llvm::StringRef fileName) {
+        // Add if not found (normalize path first)
+        auto fn = fileName.str();
+        llvm::errs() << "Adding file: " << fn << "\n";
+        if (m_lastFile != m_files.end() && fn == m_lastFile->first)
+            return;     // Declaration in same file as last.
+
+        // Try finding hte file
+        m_lastFile = m_files.find(fn);
+
+        // Append m_files if not found
+        if (m_lastFile == m_files.end())
+            m_lastFile = m_files.emplace(std::move(fn), true).first;
+    }
+
+private:
+    std::unordered_map<std::string, bool> m_files;      // Bool is false for existing files, true for new files.
+    std::unordered_map<std::string, bool>::iterator m_lastFile;
+    std::string m_fileListName;
+    size_t m_tus = 0;
+    size_t m_lines = 0;
+    size_t m_bytes = 0;
+};
+
+
+class MemberKindConsumer : public ASTConsumer {
+public:
+    MemberKindConsumer(CompilerInstance& instance) : m_instance(instance) {}
+
     void HandleTranslationUnit(ASTContext& context) override {
-        auto& srcMan = context.getSourceManager();
-        auto fileEntry = srcMan.getFileEntryForID(srcMan.getMainFileID());
-        m_fileList << fileEntry->getName().str() << std::endl;
-        
         struct Visitor : public RecursiveASTVisitor<Visitor> {
         public:
-            Visitor(ASTContext& context) : m_context(context) {
+            Visitor(ASTContext& context) : m_context(context), m_fileList("/home/bengtg/CompiledFiles.txt") {
                 m_warningList.open("/home/bengtg/KindMismatches.txt", std::ios::app);
             }
-            
+
             bool VisitNamespaceDecl(NamespaceDecl* declaration) {
                 llvm::errs() << "VNamespace: " << declaration->getNameAsString() << "\n";
+                m_fileList.add(m_context.getSourceManager().getFilename(declaration->getLocation()));
                 return true;
             }
             bool VisitClassTemplateDecl(ClassTemplateDecl* declaration) {
@@ -84,9 +180,13 @@ public:
                 return true;
             }
 
+            bool VisitFunctionDecl(FunctionDecl* decl) {
+                m_fileList.add(m_context.getSourceManager().getFilename(decl->getLocation()));
+            }
 
             void handleClass(CXXRecordDecl* rec) {
                 std::string name = rec->getQualifiedNameAsString();
+                m_fileList.add(m_context.getSourceManager().getFilename(rec->getLocation()));
                 m_classes[name].process(*rec, m_warningList, m_context.getSourceManager());
             }
 
@@ -187,6 +287,7 @@ public:
             std::map<std::string, Data> m_classes;
             ASTContext& m_context;      // To print source locations
             std::ofstream m_warningList;
+            FileList m_fileList;
         } v(context);
 
         v.TraverseAST(context);
@@ -194,7 +295,6 @@ public:
 
 private:
     CompilerInstance& m_instance;
-    std::ofstream m_fileList;
 };
 
 
