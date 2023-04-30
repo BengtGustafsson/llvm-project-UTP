@@ -23,7 +23,7 @@ namespace {
 class MemberKindConsumer : public ASTConsumer {
 public:
     MemberKindConsumer(CompilerInstance& instance) : m_instance(instance) {
-        m_fileList.open("/home/bengtg/CompiledFiles.txt", std::ios::app);
+        m_fileList.open("/home/bengtg/compiledfiles.txt", std::ios::app);
     }
 
     void HandleTranslationUnit(ASTContext& context) override {
@@ -34,7 +34,7 @@ public:
         struct Visitor : public RecursiveASTVisitor<Visitor> {
         public:
             Visitor(ASTContext& context) : m_context(context) {
-                m_warningList.open("/home/bengtg/KindMismatches.txt", std::ios::app);
+                m_warningList.open("/home/bengtg/kindmismatches.txt", std::ios::app);
             }
             
             bool VisitNamespaceDecl(NamespaceDecl* declaration) {
@@ -84,6 +84,10 @@ public:
                 return true;
             }
 
+            bool VisitInclusionDirective(clang::SourceManager &SM, const clang::FileEntry *File, const clang::Token &FilenameTok, bool IsAngled, clang::CharSourceRange FilenameRange, const clang::Module *Imported) {
+                llvm::outs() << "Included file: " << FilenameRange.getAsRange().getBegin().printToString(SM) << "\n";
+                return true;
+            }
 
             void handleClass(CXXRecordDecl* rec) {
                 std::string name = rec->getQualifiedNameAsString();
@@ -92,7 +96,7 @@ public:
 
             struct Data {
                 void process(CXXRecordDecl& rec, std::ofstream& warningList, SourceManager& sm) {
-                    llvm::errs() << "Processing " << rec.getQualifiedNameAsString() << "\n";
+//                    llvm::errs() << "Processing " << rec.getQualifiedNameAsString() << "\n";
                     for (auto decl : rec.decls()) {
                         static const ASTNodeKind usingShadowDeclKind = ASTNodeKind::getFromNodeKind<UsingShadowDecl>();
                         ASTNodeKind kind = ASTNodeKind::getFromNode(*decl);
@@ -139,7 +143,7 @@ public:
                         if (cat == cType && rec.getNameAsString() == name)
                             continue;           // Exclude the own type shortcut as it conflicts (here) with constructors
 
-                        llvm::errs() << "  Named member: " << name << "\n";
+//                        llvm::errs() << "  Named member: " << name << "\n";
                         auto iter = m_members.find(name);
                         if (iter == m_members.end())
                             m_members[name] = { cat, decl->getLocation() };
